@@ -36,7 +36,7 @@ const INITIAL_MAPPINGS = [
   { code: 'Numpad3', keyLabel: 'Num 3', soundLabel: '시상식', audioBuffer: null, color: 'bg-fuchsia-700', type: 'bgm', isDecoding: false, loop: true, volume: 1.0, audioType: 'file', url: '' }
 ];
 
-const KeycapButton = memo(({ sound, isActive, isEditMode, bgmUIState, onAction, onFileUpload, onSettingChange, onUrlLoad }) => {
+const KeycapButton = memo(({ sound, isActive, isEditMode, bgmUIState, onAction, onFileUpload, onSettingChange, onUrlLoad, onDelete }) => {
   const fileInputRef = useRef(null);
   const hasAudio = !!sound.audioBuffer;
 
@@ -108,13 +108,24 @@ const KeycapButton = memo(({ sound, isActive, isEditMode, bgmUIState, onAction, 
               </button>
             </div>
           ) : (
-            <button 
-              onClick={() => fileInputRef.current?.click()} 
-              disabled={sound.isDecoding}
-              className={`w-full text-[10px] font-medium py-0.5 rounded transition-colors h-[22px] shadow-sm ${sound.isDecoding ? 'bg-yellow-600 text-yellow-100' : hasAudio ? 'bg-slate-600 hover:bg-slate-500 text-white' : 'bg-blue-600 hover:bg-blue-500 text-white'}`}
-            >
-              {hasAudio ? '파일 변경' : '파일 등록'}
-            </button>
+            <div className="flex gap-1 h-[22px]">
+              <button 
+                onClick={() => fileInputRef.current?.click()} 
+                disabled={sound.isDecoding}
+                className={`flex-grow text-[10px] font-medium py-0.5 rounded transition-colors h-[22px] shadow-sm ${sound.isDecoding ? 'bg-yellow-600 text-yellow-100' : hasAudio ? 'bg-slate-600 hover:bg-slate-500 text-white' : 'bg-blue-600 hover:bg-blue-500 text-white'}`}
+              >
+                {hasAudio ? '파일 변경' : '파일 등록'}
+              </button>
+              {hasAudio && !sound.isDecoding && (
+                <button 
+                  onClick={() => onDelete(sound.code)} 
+                  title="비어있음으로 되돌리기"
+                  className="flex-shrink-0 w-[22px] text-[10px] rounded bg-rose-900/60 hover:bg-rose-700 text-rose-200 hover:text-white transition-colors shadow-sm"
+                >
+                  ✕
+                </button>
+              )}
+            </div>
           )}
         </div>
       ) : (
@@ -474,6 +485,13 @@ const SoundBoard = () => {
     }
   }, [initAudioContext, stopBGM, showToast]);
 
+  const handleDeleteSound = useCallback((code) => {
+    stopBGM(code);
+    deleteSoundFile(code).catch(() => {}); // IndexedDB에 저장된 파일도 함께 제거
+    setMappings(prev => prev.map(s => s.code === code ? { ...s, audioBuffer: null, url: '' } : s));
+    showToast('음원이 삭제되었습니다', 'success');
+  }, [stopBGM, showToast]);
+
   const handleSettingChange = useCallback((code, setting, value) => {
     setMappings(prev => prev.map(s => s.code === code ? { ...s, [setting]: value } : s));
 
@@ -554,17 +572,17 @@ const SoundBoard = () => {
             <div className="flex flex-col gap-3 sm:gap-4 bg-[#222731] p-4 sm:p-6 rounded-xl shadow-inner border border-black/20">
               <div className="flex gap-3 sm:gap-4 ml-0">
                 {['KeyQ', 'KeyW', 'KeyE', 'KeyR'].map(code => (
-                  <KeycapButton key={code} sound={getSound(code)} isActive={activeKeys.has(code)} isEditMode={isEditMode} bgmUIState={null} onAction={handleSoundAction} onFileUpload={handleFileUpload} onSettingChange={handleSettingChange} onUrlLoad={handleUrlLoad} />
+                  <KeycapButton key={code} sound={getSound(code)} isActive={activeKeys.has(code)} isEditMode={isEditMode} bgmUIState={null} onAction={handleSoundAction} onFileUpload={handleFileUpload} onSettingChange={handleSettingChange} onUrlLoad={handleUrlLoad} onDelete={handleDeleteSound} />
                 ))}
               </div>
               <div className="flex gap-3 sm:gap-4 ml-4 sm:ml-6">
                 {['KeyA', 'KeyS', 'KeyD', 'KeyF'].map(code => (
-                  <KeycapButton key={code} sound={getSound(code)} isActive={activeKeys.has(code)} isEditMode={isEditMode} bgmUIState={null} onAction={handleSoundAction} onFileUpload={handleFileUpload} onSettingChange={handleSettingChange} onUrlLoad={handleUrlLoad} />
+                  <KeycapButton key={code} sound={getSound(code)} isActive={activeKeys.has(code)} isEditMode={isEditMode} bgmUIState={null} onAction={handleSoundAction} onFileUpload={handleFileUpload} onSettingChange={handleSettingChange} onUrlLoad={handleUrlLoad} onDelete={handleDeleteSound} />
                 ))}
               </div>
               <div className="flex gap-3 sm:gap-4 ml-8 sm:ml-12">
                 {['KeyZ', 'KeyX', 'KeyC', 'KeyV'].map(code => (
-                  <KeycapButton key={code} sound={getSound(code)} isActive={activeKeys.has(code)} isEditMode={isEditMode} bgmUIState={null} onAction={handleSoundAction} onFileUpload={handleFileUpload} onSettingChange={handleSettingChange} onUrlLoad={handleUrlLoad} />
+                  <KeycapButton key={code} sound={getSound(code)} isActive={activeKeys.has(code)} isEditMode={isEditMode} bgmUIState={null} onAction={handleSoundAction} onFileUpload={handleFileUpload} onSettingChange={handleSettingChange} onUrlLoad={handleUrlLoad} onDelete={handleDeleteSound} />
                 ))}
               </div>
             </div>
@@ -576,7 +594,7 @@ const SoundBoard = () => {
             </h2>
             <div className="grid grid-cols-3 gap-3 sm:gap-4 bg-[#222731] p-4 sm:p-6 rounded-xl shadow-inner border border-black/20 w-fit">
               {['Numpad7', 'Numpad8', 'Numpad9', 'Numpad4', 'Numpad5', 'Numpad6', 'Numpad1', 'Numpad2', 'Numpad3'].map(code => (
-                <KeycapButton key={code} sound={getSound(code)} isActive={activeKeys.has(code)} isEditMode={isEditMode} bgmUIState={bgmUIStates[code]} onAction={handleSoundAction} onFileUpload={handleFileUpload} onSettingChange={handleSettingChange} onUrlLoad={handleUrlLoad} />
+                <KeycapButton key={code} sound={getSound(code)} isActive={activeKeys.has(code)} isEditMode={isEditMode} bgmUIState={bgmUIStates[code]} onAction={handleSoundAction} onFileUpload={handleFileUpload} onSettingChange={handleSettingChange} onUrlLoad={handleUrlLoad} onDelete={handleDeleteSound} />
               ))}
             </div>
           </div>
