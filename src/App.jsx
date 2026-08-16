@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef, memo } from 'react';
+import { saveSoundFile, deleteSoundFile, loadAllSoundFiles } from './db.js';
 
 // 안정성을 위해 버전 넘버를 v10으로 올립니다. (캐시 완벽 초기화)
 const STORAGE_KEY = 'soundboard_settings_v10';
@@ -244,6 +245,30 @@ const SoundBoard = () => {
     loadSavedUrls();
   }, []);
 
+  // 파일 업로드로 등록한 음원 복원 (IndexedDB에 저장된 원본 Blob -> 재decode)
+  useEffect(() => {
+    const restoreUploadedFiles = async () => {
+      try {
+        const blobs = await loadAllSoundFiles();
+        const codes = Object.keys(blobs);
+        if (codes.length === 0) return;
+        const ctx = initAudioContext();
+        for (const code of codes) {
+          try {
+            const audioBuffer = await ctx.decodeAudioData(await blobs[code].arrayBuffer());
+            setMappings(prev => prev.map(s => s.code === code ? { ...s, audioBuffer } : s));
+          } catch (e) {
+            console.warn(`파일 복원 실패 (${code}):`, e);
+          }
+        }
+      } catch (e) {
+        // IndexedDB 미지원/비공개 브라우징 등 -> 조용히 건너뜀
+        console.warn('IndexedDB 복원 실패:', e);
+      }
+    };
+    restoreUploadedFiles();
+  }, []);
+
   const syncBGMStateToUI = useCallback(() => {
     const nextState = {};
     activeNodesRef.current.forEach((nodeData, code) => { nextState[code] = nodeData.state; });
@@ -412,6 +437,7 @@ const SoundBoard = () => {
       const audioBuffer = await ctx.decodeAudioData(arrayBuffer);
       const defaultLabel = file.name.replace(/\.[^/.]+$/, "");
       stopBGM(code);
+      await saveSoundFile(code, file); // 원본 파일을 IndexedDB에 저장 -> 새로고침해도 유지
       setMappings(prev => prev.map(s => s.code === code ? { ...s, audioBuffer, soundLabel: defaultLabel, isDecoding: false } : s));
       showToast(`${defaultLabel} 등록 완료`, 'success');
     } catch (error) {
@@ -450,7 +476,11 @@ const SoundBoard = () => {
 
   const handleSettingChange = useCallback((code, setting, value) => {
     setMappings(prev => prev.map(s => s.code === code ? { ...s, [setting]: value } : s));
-    
+
+    if (setting === 'audioType' && value === 'url') {
+      deleteSoundFile(code).catch(() => {}); // 파일 모드에서 저장했던 이전 음원 정리
+    }
+
     if (setting === 'volume' || setting === 'loop') {
       const nodeData = activeNodesRef.current.get(code);
       if (nodeData) {
