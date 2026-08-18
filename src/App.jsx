@@ -45,7 +45,7 @@ const formatTime = (sec) => {
   return `${m}:${s.toString().padStart(2, '0')}`;
 };
 
-const KeycapButton = memo(({ sound, isActive, isEditMode, bgmUIState, onAction, onFileUpload, onSettingChange, onUrlLoad, onDelete }) => {
+const KeycapButton = memo(({ sound, isActive, isEditMode, bgmUIState, isCueTarget, onAction, onFileUpload, onSettingChange, onUrlLoad, onDelete }) => {
   const fileInputRef = useRef(null);
   const hasAudio = !!sound.audioBuffer;
 
@@ -152,9 +152,13 @@ const KeycapButton = memo(({ sound, isActive, isEditMode, bgmUIState, onAction, 
             ${hasAudio && !isActive ? 'shadow-[0_6px_0_rgba(0,0,0,0.6),0_8px_10px_rgba(0,0,0,0.4)] transform -translate-y-1' : ''}
             ${isActive && hasAudio && !sound.isDecoding ? 'shadow-[0_1px_0_rgba(0,0,0,0.8)] transform translate-y-1 brightness-90' : ''}
             ${bgmUIState === 'playing' ? 'ring-2 ring-green-400 shadow-[0_0_15px_rgba(74,222,128,0.5),0_6px_0_rgba(0,0,0,0.6)]' : ''}
+            ${isCueTarget ? 'ring-4 ring-green-400 shadow-[0_0_20px_rgba(74,222,128,0.7)] scale-105' : ''}
             text-white cursor-pointer
           `}
         >
+          {isCueTarget && (
+            <div className="absolute -top-2 -right-2 w-4 h-4 rounded-full bg-green-400 animate-ping" />
+          )}
           {hasAudio && bgmUIState && (
             <div className="absolute top-1 right-1.5 text-xs drop-shadow-md">
               {bgmUIState === 'playing' && <span className="inline-block animate-pulse text-green-300">🔊</span>}
@@ -661,7 +665,7 @@ const SoundBoard = () => {
         </div>
       )}
 
-      <header className="flex-shrink-0 p-4 sm:p-6 border-b border-black/40 bg-[#171a1f] z-30 shadow-md">
+      <header className="flex-shrink-0 p-3 sm:p-5 border-b border-black/40 bg-[#171a1f] z-30 shadow-md">
         <div className="max-w-6xl mx-auto flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
           <div>
             <h1 className="text-2xl font-extrabold tracking-tight flex items-center gap-2">
@@ -700,7 +704,7 @@ const SoundBoard = () => {
         </div>
       </header>
 
-      <main className="flex-grow p-4 lg:p-8 overflow-y-auto overflow-x-auto z-10 custom-scrollbar flex flex-col items-center justify-start">
+      <main className="flex-grow p-3 lg:p-6 overflow-y-auto overflow-x-auto z-10 custom-scrollbar flex flex-col items-center justify-start">
         
         {/* 🎬 큐 시퀀스 편집 패널 (편집 모드에서만 노출) */}
         {isEditMode && (
@@ -752,37 +756,57 @@ const SoundBoard = () => {
 
         {/* 🎬 큐 GO 바 (큐 모드 켜져있고 편집 중이 아닐 때 노출) */}
         {isCueMode && !isEditMode && (
-          <div className="w-full max-w-5xl bg-[#222731] border border-purple-500/40 rounded-xl p-4 mb-6 flex flex-wrap items-center justify-between gap-4 shadow-lg">
-            <div>
-              <div className="text-[10px] text-purple-400 mb-1 font-medium">
-                {cueList.length === 0 ? '큐 없음' : `다음 큐 · ${Math.min(cueIndex + 2, cueList.length)} / ${cueList.length}`}
+          <div className="w-full max-w-5xl bg-[#222731] border border-purple-500/40 rounded-xl p-4 mb-4 shadow-lg">
+            <div className="flex flex-wrap items-center justify-between gap-4">
+              <div>
+                <div className="text-[10px] text-purple-400 mb-1 font-medium">
+                  {cueList.length === 0 ? '큐 없음' : `다음 큐 · ${Math.min(cueIndex + 2, cueList.length)} / ${cueList.length}`}
+                </div>
+                <div className="text-base font-bold text-white">
+                  {cueList.length === 0
+                    ? '편집 모드에서 큐를 먼저 구성하세요'
+                    : cueList[cueIndex + 1]
+                    ? (getSound(cueList[cueIndex + 1])?.soundLabel || '알 수 없음')
+                    : '🏁 마지막 큐입니다'}
+                </div>
               </div>
-              <div className="text-base font-bold text-white">
-                {cueList.length === 0
-                  ? '편집 모드에서 큐를 먼저 구성하세요'
-                  : cueList[cueIndex + 1]
-                  ? (getSound(cueList[cueIndex + 1])?.soundLabel || '알 수 없음')
-                  : '🏁 마지막 큐입니다'}
+              <div className="flex items-center gap-2">
+                <button onClick={resetCue} disabled={cueIndex === -1} className="text-xs px-3 py-2.5 rounded-lg bg-slate-700 hover:bg-slate-600 disabled:opacity-40 transition-colors">
+                  ⏮ 처음으로
+                </button>
+                <button 
+                  onClick={triggerNextCue} 
+                  disabled={cueList.length === 0 || cueIndex + 1 >= cueList.length}
+                  className="bg-purple-600 hover:bg-purple-500 disabled:opacity-40 disabled:cursor-not-allowed text-white font-bold px-6 py-2.5 rounded-lg border-b-4 border-purple-800 active:border-b-0 active:translate-y-1 transition-all"
+                >
+                  GO ⎵
+                </button>
               </div>
             </div>
-            <div className="flex items-center gap-2">
-              <button onClick={resetCue} disabled={cueIndex === -1} className="text-xs px-3 py-2.5 rounded-lg bg-slate-700 hover:bg-slate-600 disabled:opacity-40 transition-colors">
-                ⏮ 처음으로
-              </button>
-              <button 
-                onClick={triggerNextCue} 
-                disabled={cueList.length === 0 || cueIndex + 1 >= cueList.length}
-                className="bg-purple-600 hover:bg-purple-500 disabled:opacity-40 disabled:cursor-not-allowed text-white font-bold px-6 py-2.5 rounded-lg border-b-4 border-purple-800 active:border-b-0 active:translate-y-1 transition-all"
-              >
-                GO ⎵
-              </button>
-            </div>
+            {cueList.length > 0 && (
+              <div className="flex gap-1.5 mt-3 flex-wrap">
+                {cueList.map((code, idx) => (
+                  <div
+                    key={idx}
+                    title={getSound(code)?.soundLabel || code}
+                    className={`w-3 h-3 rounded-sm transition-colors ${
+                      idx < cueIndex + 1
+                        ? 'bg-slate-600'
+                        : idx === cueIndex + 1
+                        ? 'bg-green-400 shadow-[0_0_6px_rgba(74,222,128,0.8)]'
+                        : 'bg-transparent border border-dashed border-slate-500'
+                    }`}
+                  />
+                ))}
+              </div>
+            )}
           </div>
         )}
 
+
         {/* 🔥 수정된 자판 설정 가이드 (사라지지 않고 유지됨, 콤팩트한 한 줄 디자인) */}
         {isEditMode && (
-          <div className="w-full max-w-5xl bg-blue-900/20 border border-blue-500/30 rounded-lg p-3 mb-6 text-blue-200 shadow-inner animate-fade-in flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+          <div className="w-full max-w-5xl bg-blue-900/20 border border-blue-500/30 rounded-lg p-3 mb-4 text-blue-200 shadow-inner animate-fade-in flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
             <h3 className="font-bold text-blue-400 flex items-center gap-1.5 text-sm whitespace-nowrap">
               <span className="text-base">💡</span> 설정 가이드
             </h3>
@@ -794,7 +818,7 @@ const SoundBoard = () => {
           </div>
         )}
 
-        <div className="bg-[#2a303c] p-6 sm:p-10 rounded-2xl shadow-[inset_0_4px_10px_rgba(255,255,255,0.05),0_15px_25px_rgba(0,0,0,0.5)] border border-slate-600/30 flex flex-col xl:flex-row gap-8 xl:gap-16 min-w-max">
+        <div className="bg-[#2a303c] p-4 sm:p-6 lg:p-8 rounded-2xl shadow-[inset_0_4px_10px_rgba(255,255,255,0.05),0_15px_25px_rgba(0,0,0,0.5)] border border-slate-600/30 flex flex-col xl:flex-row flex-wrap gap-6 xl:gap-10">
           
           <div>
             <h2 className="text-lg font-bold mb-4 text-slate-400 flex items-center gap-2 ml-2">
@@ -803,17 +827,17 @@ const SoundBoard = () => {
             <div className="flex flex-col gap-3 sm:gap-4 bg-[#222731] p-4 sm:p-6 rounded-xl shadow-inner border border-black/20">
               <div className="flex gap-3 sm:gap-4 ml-0">
                 {['KeyQ', 'KeyW', 'KeyE', 'KeyR'].map(code => (
-                  <KeycapButton key={code} sound={getSound(code)} isActive={activeKeys.has(code)} isEditMode={isEditMode} bgmUIState={null} onAction={handleSoundAction} onFileUpload={handleFileUpload} onSettingChange={handleSettingChange} onUrlLoad={handleUrlLoad} onDelete={handleDeleteSound} />
+                  <KeycapButton key={code} sound={getSound(code)} isActive={activeKeys.has(code)} isEditMode={isEditMode} bgmUIState={null} isCueTarget={isCueMode && !isEditMode && cueList[cueIndex + 1] === code} onAction={handleSoundAction} onFileUpload={handleFileUpload} onSettingChange={handleSettingChange} onUrlLoad={handleUrlLoad} onDelete={handleDeleteSound} />
                 ))}
               </div>
               <div className="flex gap-3 sm:gap-4 ml-4 sm:ml-6">
                 {['KeyA', 'KeyS', 'KeyD', 'KeyF'].map(code => (
-                  <KeycapButton key={code} sound={getSound(code)} isActive={activeKeys.has(code)} isEditMode={isEditMode} bgmUIState={null} onAction={handleSoundAction} onFileUpload={handleFileUpload} onSettingChange={handleSettingChange} onUrlLoad={handleUrlLoad} onDelete={handleDeleteSound} />
+                  <KeycapButton key={code} sound={getSound(code)} isActive={activeKeys.has(code)} isEditMode={isEditMode} bgmUIState={null} isCueTarget={isCueMode && !isEditMode && cueList[cueIndex + 1] === code} onAction={handleSoundAction} onFileUpload={handleFileUpload} onSettingChange={handleSettingChange} onUrlLoad={handleUrlLoad} onDelete={handleDeleteSound} />
                 ))}
               </div>
               <div className="flex gap-3 sm:gap-4 ml-8 sm:ml-12">
                 {['KeyZ', 'KeyX', 'KeyC', 'KeyV'].map(code => (
-                  <KeycapButton key={code} sound={getSound(code)} isActive={activeKeys.has(code)} isEditMode={isEditMode} bgmUIState={null} onAction={handleSoundAction} onFileUpload={handleFileUpload} onSettingChange={handleSettingChange} onUrlLoad={handleUrlLoad} onDelete={handleDeleteSound} />
+                  <KeycapButton key={code} sound={getSound(code)} isActive={activeKeys.has(code)} isEditMode={isEditMode} bgmUIState={null} isCueTarget={isCueMode && !isEditMode && cueList[cueIndex + 1] === code} onAction={handleSoundAction} onFileUpload={handleFileUpload} onSettingChange={handleSettingChange} onUrlLoad={handleUrlLoad} onDelete={handleDeleteSound} />
                 ))}
               </div>
             </div>
@@ -825,7 +849,7 @@ const SoundBoard = () => {
             </h2>
             <div className="grid grid-cols-3 gap-3 sm:gap-4 bg-[#222731] p-4 sm:p-6 rounded-xl shadow-inner border border-black/20 w-fit">
               {['Numpad7', 'Numpad8', 'Numpad9', 'Numpad4', 'Numpad5', 'Numpad6', 'Numpad1', 'Numpad2', 'Numpad3'].map(code => (
-                <KeycapButton key={code} sound={getSound(code)} isActive={activeKeys.has(code)} isEditMode={isEditMode} bgmUIState={bgmUIStates[code]} onAction={handleSoundAction} onFileUpload={handleFileUpload} onSettingChange={handleSettingChange} onUrlLoad={handleUrlLoad} onDelete={handleDeleteSound} />
+                <KeycapButton key={code} sound={getSound(code)} isActive={activeKeys.has(code)} isEditMode={isEditMode} bgmUIState={bgmUIStates[code]} isCueTarget={isCueMode && !isEditMode && cueList[cueIndex + 1] === code} onAction={handleSoundAction} onFileUpload={handleFileUpload} onSettingChange={handleSettingChange} onUrlLoad={handleUrlLoad} onDelete={handleDeleteSound} />
               ))}
             </div>
           </div>
