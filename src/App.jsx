@@ -45,6 +45,14 @@ const formatTime = (sec) => {
   return `${m}:${s.toString().padStart(2, '0')}`;
 };
 
+// Blob -> base64 data URL 변환 (설정 내보내기용)
+const blobToBase64 = (blob) => new Promise((resolve, reject) => {
+  const reader = new FileReader();
+  reader.onloadend = () => resolve(reader.result);
+  reader.onerror = reject;
+  reader.readAsDataURL(blob);
+});
+
 const KeycapButton = memo(({ sound, isActive, isEditMode, bgmUIState, isCueTarget, onAction, onFileUpload, onSettingChange, onUrlLoad, onDelete }) => {
   const fileInputRef = useRef(null);
   const hasAudio = !!sound.audioBuffer;
@@ -634,6 +642,112 @@ const SoundBoard = () => {
     showToast('음원이 삭제되었습니다', 'success');
   }, [stopBGM, showToast]);
 
+  // 설정 내보내기: 라벨/볼륨/큐리스트 + (파일 모드) 원본 음원을 base64로 JSON에 통째로 담음
+  const handleExportSettings = useCallback(async () => {
+    try {
+      showToast('내보내기 준비 중...', 'success');
+      const fileBlobs = await loadAllSoundFiles(); // { code: Blob }
+      const soundsExport = await Promise.all(mappingsRef.current.map(async (s) => {
+        let fileData = null, fileType = null;
+        if (s.audioType === 'file' && fileBlobs[s.code]) {
+          fileData = await blobToBase64(fileBlobs[s.code]);
+          fileType = fileBlobs[s.code].type || 'audio/mpeg';
+        }
+        return {
+          code: s.code,
+          soundLabel: s.soundLabel,
+          loop: s.loop,
+          volume: s.volume,
+          audioType: s.audioType,
+          url: s.url || '',
+          fileData,
+          fileType,
+        };
+      }));
+
+      const payload = {
+        version: 1,
+        exportedAt: new Date().toISOString(),
+        sfxVolume: sfxVolumeRef.current,
+        cueList: cueListRef.current,
+        sounds: soundsExport,
+      };
+
+      const blob = new Blob([JSON.stringify(payload)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `soundboard-settings-${new Date().toISOString().slice(0, 10)}.json`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+      showToast('설정을 내보냈습니다', 'success');
+    } catch (e) {
+      console.error(e);
+      showToast('내보내기에 실패했습니다', 'error');
+    }
+  }, [showToast]);
+
+  // 설정 가져오기: JSON을 읽어 라벨/볼륨/큐리스트 복원 + (파일 모드) base64 음원을 다시 decode하여 즉시 재생 가능하게 함
+  const handleImportSettings = useCallback(async (event) => {
+    const file = event.target.files[0];
+    if (!file) return;
+
+    try {
+      const text = await file.text();
+      const payload = JSON.parse(text);
+      if (!Array.isArray(payload.sounds)) throw new Error('형식이 올바르지 않습니다');
+
+      const ctx = initAudioContext();
+      showToast('설정을 불러오는 중...', 'success');
+
+      for (const s of payload.sounds) {
+        const isKnownCode = INITIAL_MAPPINGS.some(m => m.code === s.code);
+        if (!isKnownCode) continue;
+
+        let audioBuffer = null;
+        if (s.audioType === 'file' && s.fileData) {
+          try {
+            const resp = await fetch(s.fileData);
+            const blob = await resp.blob();
+            await saveSoundFile(s.code, blob);
+            audioBuffer = await ctx.decodeAudioData(await blob.arrayBuffer());
+          } catch (e) {
+            console.warn(`파일 복원 실패 (${s.code}):`, e);
+          }
+        } else if (s.audioType === 'url' && s.url) {
+          try {
+            const resp = await fetch(s.url);
+            audioBuffer = await ctx.decodeAudioData(await resp.arrayBuffer());
+          } catch (e) {
+            console.warn(`URL 로드 실패 (${s.code}):`, e);
+          }
+        }
+
+        setMappings(prev => prev.map(m => m.code === s.code ? {
+          ...m,
+          soundLabel: s.soundLabel ?? m.soundLabel,
+          loop: s.loop ?? m.loop,
+          volume: s.volume ?? m.volume,
+          audioType: s.audioType ?? m.audioType,
+          url: s.url ?? m.url,
+          audioBuffer: audioBuffer ?? m.audioBuffer,
+        } : m));
+      }
+
+      if (Array.isArray(payload.cueList)) setCueList(payload.cueList);
+      if (typeof payload.sfxVolume === 'number') setSfxVolume(payload.sfxVolume);
+
+      showToast('설정을 가져왔습니다', 'success');
+    } catch (e) {
+      console.error(e);
+      showToast('가져오기 실패: 올바른 설정 파일인지 확인하세요', 'error');
+    } finally {
+      event.target.value = null;
+    }
+  }, [initAudioContext, showToast]);
+
   const handleSettingChange = useCallback((code, setting, value) => {
     setMappings(prev => prev.map(s => s.code === code ? { ...s, [setting]: value } : s));
 
@@ -705,7 +819,28 @@ const SoundBoard = () => {
       </header>
 
       <main className="flex-grow p-3 lg:p-6 overflow-y-auto overflow-x-auto z-10 custom-scrollbar flex flex-col items-center justify-start">
-        
+
+        {/* 💾 설정 내보내기/가져오기 (편집 모드에서만 노출) */}
+        {isEditMode && (
+          <div className="w-full max-w-5xl bg-slate-800/40 border border-slate-600/40 rounded-lg p-4 mb-4 flex flex-wrap items-center justify-between gap-3">
+            <div className="text-xs text-slate-400">
+              <strong className="text-white">💾 설정 백업/공유:</strong> 지금 등록된 자판·볼륨·큐 목록을 파일로 저장하거나, 다른 컴퓨터에서 저장한 파일을 불러옵니다.
+            </div>
+            <div className="flex gap-2 flex-shrink-0">
+              <button
+                onClick={handleExportSettings}
+                className="text-xs font-medium px-3 py-2 rounded bg-slate-700 hover:bg-slate-600 text-slate-200 transition-colors flex items-center gap-1.5"
+              >
+                ⬇️ 내보내기
+              </button>
+              <label className="text-xs font-medium px-3 py-2 rounded bg-blue-600 hover:bg-blue-500 text-white transition-colors flex items-center gap-1.5 cursor-pointer">
+                ⬆️ 가져오기
+                <input type="file" accept="application/json" className="hidden" onChange={handleImportSettings} />
+              </label>
+            </div>
+          </div>
+        )}
+
         {/* 🎬 큐 시퀀스 편집 패널 (편집 모드에서만 노출) */}
         {isEditMode && (
           <div className="w-full max-w-5xl bg-purple-900/20 border border-purple-500/30 rounded-lg p-4 mb-4 text-purple-200 shadow-inner">
