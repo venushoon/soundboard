@@ -37,6 +37,14 @@ const INITIAL_MAPPINGS = [
   { code: 'Numpad3', keyLabel: 'Num 3', soundLabel: '시상식', audioBuffer: null, color: 'bg-fuchsia-700', type: 'bgm', isDecoding: false, loop: true, volume: 1.0, audioType: 'file', url: '' }
 ];
 
+// mm:ss 형식으로 시간 포맷
+const formatTime = (sec) => {
+  if (!isFinite(sec) || sec < 0) sec = 0;
+  const m = Math.floor(sec / 60);
+  const s = Math.floor(sec % 60);
+  return `${m}:${s.toString().padStart(2, '0')}`;
+};
+
 const KeycapButton = memo(({ sound, isActive, isEditMode, bgmUIState, onAction, onFileUpload, onSettingChange, onUrlLoad, onDelete }) => {
   const fileInputRef = useRef(null);
   const hasAudio = !!sound.audioBuffer;
@@ -199,6 +207,7 @@ const SoundBoard = () => {
   const [isEditMode, setIsEditMode] = useState(false);
   const [bgmUIStates, setBgmUIStates] = useState({}); 
   const [toast, setToast] = useState(null);
+  const [, forceTick] = useState(0); // BGM 재생 진행바 업데이트용 강제 리렌더
 
   const [cueList, setCueList] = useState(() => {
     const saved = localStorage.getItem(CUE_KEY);
@@ -300,6 +309,27 @@ const SoundBoard = () => {
       }
     };
     restoreUploadedFiles();
+  }, []);
+
+  // BGM 재생 중일 때만 0.25초마다 진행바 갱신 (재생 없으면 인터벌 안 돌림)
+  useEffect(() => {
+    const hasPlaying = Object.values(bgmUIStates).some(s => s === 'playing');
+    if (!hasPlaying) return;
+    const id = setInterval(() => forceTick(t => t + 1), 250);
+    return () => clearInterval(id);
+  }, [bgmUIStates]);
+
+  const getPlaybackInfo = useCallback((code) => {
+    const nodeData = activeNodesRef.current.get(code);
+    if (!nodeData || !nodeData.buffer) return null;
+    const duration = nodeData.buffer.duration;
+    const ctx = audioCtxRef.current;
+    let elapsed = nodeData.state === 'playing' && ctx
+      ? nodeData.startOffset + (ctx.currentTime - nodeData.startTime)
+      : nodeData.startOffset;
+    const sound = mappingsRef.current.find(s => s.code === code);
+    elapsed = sound?.loop ? elapsed % duration : Math.min(Math.max(elapsed, 0), duration);
+    return { elapsed, duration };
   }, []);
 
   const syncBGMStateToUI = useCallback(() => {
@@ -827,6 +857,22 @@ const SoundBoard = () => {
                       <button onClick={() => stopBGM(code)} className="w-9 h-9 bg-rose-900/50 hover:bg-rose-700 text-rose-300 rounded">⏹️</button>
                     </div>
                   </div>
+                  {(() => {
+                    const info = getPlaybackInfo(code);
+                    if (!info) return null;
+                    const pct = info.duration > 0 ? (info.elapsed / info.duration) * 100 : 0;
+                    return (
+                      <div className="px-1">
+                        <div className="h-1 bg-slate-700 rounded-full overflow-hidden mb-1">
+                          <div className="h-full bg-blue-500" style={{ width: `${pct}%` }} />
+                        </div>
+                        <div className="flex justify-between text-[10px] text-slate-500 font-mono">
+                          <span>{formatTime(info.elapsed)}</span>
+                          <span>{formatTime(info.duration)}</span>
+                        </div>
+                      </div>
+                    );
+                  })()}
                   <div className="flex items-center justify-between gap-4 px-1">
                     <input type="range" min="0" max="1" step="0.01" value={soundData.volume} onChange={(e) => handleSettingChange(code, 'volume', parseFloat(e.target.value))} className="flex-grow h-1.5 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-blue-500"/>
                     <button onClick={() => handleSettingChange(code, 'loop', !soundData.loop)} className={`flex-shrink-0 text-[10px] px-2 py-1 rounded border ${soundData.loop ? 'bg-blue-900/50 border-blue-500/50 text-blue-300' : 'bg-slate-800 border-slate-600 text-slate-500'}`}>
