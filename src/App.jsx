@@ -759,6 +759,12 @@ const SoundBoard = () => {
           <div className="w-full max-w-5xl bg-[#222731] border border-purple-500/40 rounded-xl p-4 mb-4 shadow-lg">
             <div className="flex flex-wrap items-center justify-between gap-4">
               <div>
+                {cueIndex >= 0 && (
+                  <div className="text-[10px] text-emerald-400 mb-0.5 font-medium flex items-center gap-1">
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                    방금 재생됨 · {cueIndex + 1}번 「{getSound(cueList[cueIndex])?.soundLabel || cueList[cueIndex]}」
+                  </div>
+                )}
                 <div className="text-[10px] text-purple-400 mb-1 font-medium">
                   {cueList.length === 0 ? '큐 없음' : `다음 큐 · ${Math.min(cueIndex + 2, cueList.length)} / ${cueList.length}`}
                 </div>
