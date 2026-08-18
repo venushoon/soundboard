@@ -4,6 +4,7 @@ import { saveSoundFile, deleteSoundFile, loadAllSoundFiles } from './db.js';
 // 안정성을 위해 버전 넘버를 v10으로 올립니다. (캐시 완벽 초기화)
 const STORAGE_KEY = 'soundboard_settings_v10';
 const SFX_VOL_KEY = 'soundboard_sfx_vol_v10';
+const CUE_KEY = 'soundboard_cue_list_v1';
 
 const INITIAL_MAPPINGS = [
   // --- 1열 (Q, W, E, R) ---
@@ -198,6 +199,15 @@ const SoundBoard = () => {
   const [isEditMode, setIsEditMode] = useState(false);
   const [bgmUIStates, setBgmUIStates] = useState({}); 
   const [toast, setToast] = useState(null);
+
+  const [cueList, setCueList] = useState(() => {
+    const saved = localStorage.getItem(CUE_KEY);
+    if (saved) { try { return JSON.parse(saved); } catch (e) { return []; } }
+    return [];
+  });
+  const [cueIndex, setCueIndex] = useState(-1); // -1 = 시작 전
+  const [isCueMode, setIsCueMode] = useState(false);
+  const [cueAddSelection, setCueAddSelection] = useState('');
   
   const audioCtxRef = useRef(null);
   const activeNodesRef = useRef(new Map());
@@ -206,10 +216,21 @@ const SoundBoard = () => {
   const mappingsRef = useRef(mappings);
   const isEditModeRef = useRef(isEditMode);
   const sfxVolumeRef = useRef(sfxVolume);
+  const cueListRef = useRef(cueList);
+  const cueIndexRef = useRef(cueIndex);
+  const isCueModeRef = useRef(isCueMode);
   
   useEffect(() => { mappingsRef.current = mappings; }, [mappings]);
   useEffect(() => { isEditModeRef.current = isEditMode; }, [isEditMode]);
   useEffect(() => { sfxVolumeRef.current = sfxVolume; }, [sfxVolume]);
+  useEffect(() => { cueListRef.current = cueList; }, [cueList]);
+  useEffect(() => { cueIndexRef.current = cueIndex; }, [cueIndex]);
+  useEffect(() => { isCueModeRef.current = isCueMode; }, [isCueMode]);
+
+  useEffect(() => {
+    const id = setTimeout(() => localStorage.setItem(CUE_KEY, JSON.stringify(cueList)), 300);
+    return () => clearTimeout(id);
+  }, [cueList]);
 
   const showToast = useCallback((msg, type = 'error') => {
     setToast({ msg, type });
@@ -405,9 +426,86 @@ const SoundBoard = () => {
     }
   }, [initAudioContext, handleBGMPlayback]);
 
+  // 전체 정지: 재생 중인 모든 BGM을 즉시 중단 (페이드 없이 바로 멈춤)
+  const handlePanicStop = useCallback(() => {
+    activeNodesRef.current.forEach((nodeData) => {
+      if (nodeData.timeoutId) clearTimeout(nodeData.timeoutId);
+      if (nodeData.source) { nodeData.source.onended = null; try { nodeData.source.stop(); } catch (e) {} }
+    });
+    activeNodesRef.current.clear();
+    setBgmUIStates({});
+    setActiveKeys(new Set());
+    showToast('전체 정지되었습니다', 'success');
+  }, [showToast]);
+
+  // 큐 모드: GO 실행 시 다음 큐의 사운드를 재생하고 커서를 한 칸 이동
+  const triggerNextCue = useCallback(() => {
+    const list = cueListRef.current;
+    if (list.length === 0) { showToast('등록된 큐가 없습니다', 'error'); return; }
+    const nextIndex = cueIndexRef.current + 1;
+    if (nextIndex >= list.length) { showToast('마지막 큐입니다', 'success'); return; }
+
+    const code = list[nextIndex];
+    const soundObj = mappingsRef.current.find(s => s.code === code);
+    if (!soundObj || !soundObj.audioBuffer) {
+      showToast('등록되지 않은 음원입니다. 다음 큐로 건너뜁니다.', 'error');
+      setCueIndex(nextIndex);
+      return;
+    }
+
+    if (soundObj.type === 'sfx') {
+      const ctx = initAudioContext();
+      if (ctx) {
+        const source = ctx.createBufferSource();
+        const gainNode = ctx.createGain();
+        gainNode.gain.value = sfxVolumeRef.current * soundObj.volume;
+        source.buffer = soundObj.audioBuffer;
+        source.connect(gainNode);
+        gainNode.connect(ctx.destination);
+        source.start(0);
+      }
+    } else {
+      handleBGMPlayback(soundObj, 'play');
+    }
+    setCueIndex(nextIndex);
+  }, [initAudioContext, handleBGMPlayback, showToast]);
+
+  const resetCue = useCallback(() => {
+    setCueIndex(-1);
+    showToast('큐가 처음으로 이동했습니다', 'success');
+  }, [showToast]);
+
+  const addCue = useCallback((code) => {
+    if (!code) return;
+    setCueList(prev => [...prev, code]);
+    setCueAddSelection('');
+  }, []);
+
+  const removeCue = useCallback((idx) => {
+    setCueList(prev => prev.filter((_, i) => i !== idx));
+    setCueIndex(-1); // 목록이 바뀌면 진행 상태 초기화
+  }, []);
+
+  const moveCue = useCallback((idx, dir) => {
+    setCueList(prev => {
+      const next = [...prev];
+      const target = idx + dir;
+      if (target < 0 || target >= next.length) return prev;
+      [next[idx], next[target]] = [next[target], next[idx]];
+      return next;
+    });
+  }, []);
+
   useEffect(() => {
     const handleKeyDown = (e) => {
-      if (e.repeat || isEditModeRef.current || document.activeElement.tagName === 'INPUT') return;
+      if (document.activeElement.tagName === 'INPUT') return;
+      if (e.code === 'Escape') { e.preventDefault(); handlePanicStop(); return; }
+      if (isCueModeRef.current && e.code === 'Space' && !isEditModeRef.current) {
+        e.preventDefault();
+        triggerNextCue();
+        return;
+      }
+      if (e.repeat || isEditModeRef.current) return;
       handleSoundAction(e.code, true);
     };
     const handleKeyUp = (e) => {
@@ -420,7 +518,7 @@ const SoundBoard = () => {
       window.removeEventListener('keydown', handleKeyDown);
       window.removeEventListener('keyup', handleKeyUp);
     };
-  }, [handleSoundAction]);
+  }, [handleSoundAction, triggerNextCue, handlePanicStop]);
 
   useEffect(() => {
     return () => {
@@ -538,17 +636,110 @@ const SoundBoard = () => {
               />
             </div>
           </div>
-          <button 
-            onClick={() => setIsEditMode(!isEditMode)}
-            className={`px-5 py-2.5 rounded-lg font-bold text-sm transition-all flex items-center gap-2 border-b-4 active:border-b-0 active:translate-y-1 ${isEditMode ? 'bg-emerald-500 border-emerald-700 text-white shadow-[0_0_15px_rgba(16,185,129,0.4)]' : 'bg-slate-700 border-slate-900 text-slate-200'}`}
-          >
-            {isEditMode ? '💾 편집 완료' : '⚙️ 자판 설정'}
-          </button>
+          <div className="flex items-center gap-2">
+            <button 
+              onClick={() => setIsCueMode(v => !v)}
+              className={`px-4 py-2.5 rounded-lg font-bold text-sm transition-all flex items-center gap-1.5 border-b-4 active:border-b-0 active:translate-y-1 ${isCueMode ? 'bg-purple-600 border-purple-800 text-white shadow-[0_0_15px_rgba(168,85,247,0.4)]' : 'bg-slate-700 border-slate-900 text-slate-200'}`}
+            >
+              🎬 큐 모드
+            </button>
+            <button 
+              onClick={handlePanicStop}
+              className="px-4 py-2.5 rounded-lg font-bold text-sm bg-rose-600 border-b-4 border-rose-800 text-white active:border-b-0 active:translate-y-1 transition-all flex items-center gap-1.5"
+              title="재생 중인 모든 소리를 즉시 정지 (Esc)"
+            >
+              🛑 전체 정지
+            </button>
+            <button 
+              onClick={() => setIsEditMode(!isEditMode)}
+              className={`px-5 py-2.5 rounded-lg font-bold text-sm transition-all flex items-center gap-2 border-b-4 active:border-b-0 active:translate-y-1 ${isEditMode ? 'bg-emerald-500 border-emerald-700 text-white shadow-[0_0_15px_rgba(16,185,129,0.4)]' : 'bg-slate-700 border-slate-900 text-slate-200'}`}
+            >
+              {isEditMode ? '💾 편집 완료' : '⚙️ 자판 설정'}
+            </button>
+          </div>
         </div>
       </header>
 
       <main className="flex-grow p-4 lg:p-8 overflow-y-auto overflow-x-auto z-10 custom-scrollbar flex flex-col items-center justify-start">
         
+        {/* 🎬 큐 시퀀스 편집 패널 (편집 모드에서만 노출) */}
+        {isEditMode && (
+          <div className="w-full max-w-5xl bg-purple-900/20 border border-purple-500/30 rounded-lg p-4 mb-4 text-purple-200 shadow-inner">
+            <h3 className="font-bold text-purple-300 mb-3 flex items-center gap-1.5 text-sm">
+              <span className="text-base">🎬</span> 큐 시퀀스 구성 <span className="text-[10px] font-normal text-purple-400/80">(큐 모드에서 Space로 순서대로 재생)</span>
+            </h3>
+            <div className="flex flex-wrap gap-2 mb-3">
+              {cueList.length === 0 && <span className="text-xs text-purple-400/70">등록된 큐가 없습니다. 아래에서 사운드를 골라 추가하세요.</span>}
+              {cueList.map((code, idx) => {
+                const s = getSound(code);
+                return (
+                  <div key={`${code}-${idx}`} className="flex items-center gap-1 bg-slate-800 border border-purple-500/40 rounded-full pl-3 pr-1.5 py-1 text-xs">
+                    <span className="text-purple-300 font-bold">{idx + 1}</span>
+                    <span className="max-w-[100px] truncate">{s ? s.soundLabel : code}</span>
+                    <button onClick={() => moveCue(idx, -1)} disabled={idx === 0} className="w-5 h-5 rounded hover:bg-slate-700 disabled:opacity-30 text-slate-300">↑</button>
+                    <button onClick={() => moveCue(idx, 1)} disabled={idx === cueList.length - 1} className="w-5 h-5 rounded hover:bg-slate-700 disabled:opacity-30 text-slate-300">↓</button>
+                    <button onClick={() => removeCue(idx)} className="w-5 h-5 rounded hover:bg-rose-900/50 text-rose-400">✕</button>
+                  </div>
+                );
+              })}
+            </div>
+            <div className="flex gap-2 items-center">
+              <select 
+                value={cueAddSelection} 
+                onChange={(e) => setCueAddSelection(e.target.value)}
+                className="bg-slate-700 text-slate-200 text-xs rounded px-2 py-1.5 border border-slate-600 outline-none max-w-[220px]"
+              >
+                <option value="">사운드 선택...</option>
+                {mappings.filter(s => s.audioBuffer).map(s => (
+                  <option key={s.code} value={s.code}>{s.keyLabel} — {s.soundLabel}</option>
+                ))}
+              </select>
+              <button 
+                onClick={() => addCue(cueAddSelection)} 
+                disabled={!cueAddSelection}
+                className="bg-purple-600 hover:bg-purple-500 disabled:opacity-40 text-white text-xs font-medium px-3 py-1.5 rounded transition-colors"
+              >
+                + 큐에 추가
+              </button>
+              {cueList.length > 0 && (
+                <button onClick={() => { setCueList([]); setCueIndex(-1); }} className="ml-auto text-[10px] text-rose-400 hover:text-rose-300">
+                  전체 삭제
+                </button>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* 🎬 큐 GO 바 (큐 모드 켜져있고 편집 중이 아닐 때 노출) */}
+        {isCueMode && !isEditMode && (
+          <div className="w-full max-w-5xl bg-[#222731] border border-purple-500/40 rounded-xl p-4 mb-6 flex flex-wrap items-center justify-between gap-4 shadow-lg">
+            <div>
+              <div className="text-[10px] text-purple-400 mb-1 font-medium">
+                {cueList.length === 0 ? '큐 없음' : `다음 큐 · ${Math.min(cueIndex + 2, cueList.length)} / ${cueList.length}`}
+              </div>
+              <div className="text-base font-bold text-white">
+                {cueList.length === 0
+                  ? '편집 모드에서 큐를 먼저 구성하세요'
+                  : cueList[cueIndex + 1]
+                  ? (getSound(cueList[cueIndex + 1])?.soundLabel || '알 수 없음')
+                  : '🏁 마지막 큐입니다'}
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <button onClick={resetCue} disabled={cueIndex === -1} className="text-xs px-3 py-2.5 rounded-lg bg-slate-700 hover:bg-slate-600 disabled:opacity-40 transition-colors">
+                ⏮ 처음으로
+              </button>
+              <button 
+                onClick={triggerNextCue} 
+                disabled={cueList.length === 0 || cueIndex + 1 >= cueList.length}
+                className="bg-purple-600 hover:bg-purple-500 disabled:opacity-40 disabled:cursor-not-allowed text-white font-bold px-6 py-2.5 rounded-lg border-b-4 border-purple-800 active:border-b-0 active:translate-y-1 transition-all"
+              >
+                GO ⎵
+              </button>
+            </div>
+          </div>
+        )}
+
         {/* 🔥 수정된 자판 설정 가이드 (사라지지 않고 유지됨, 콤팩트한 한 줄 디자인) */}
         {isEditMode && (
           <div className="w-full max-w-5xl bg-blue-900/20 border border-blue-500/30 rounded-lg p-3 mb-6 text-blue-200 shadow-inner animate-fade-in flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
