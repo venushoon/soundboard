@@ -211,6 +211,7 @@ const SoundBoard = () => {
   
   const audioCtxRef = useRef(null);
   const activeNodesRef = useRef(new Map());
+  const sfxNodesRef = useRef(new Set()); // 재생 중인 SFX 소스 추적 (전체정지용)
   const toastTimerRef = useRef(null);
   
   const mappingsRef = useRef(mappings);
@@ -412,6 +413,8 @@ const SoundBoard = () => {
           source.buffer = soundObj.audioBuffer;
           source.connect(gainNode);
           gainNode.connect(ctx.destination);
+          sfxNodesRef.current.add(source);
+          source.onended = () => sfxNodesRef.current.delete(source);
           source.start(0);
         }
       } else if (soundObj.type === 'bgm') {
@@ -426,13 +429,18 @@ const SoundBoard = () => {
     }
   }, [initAudioContext, handleBGMPlayback]);
 
-  // 전체 정지: 재생 중인 모든 BGM을 즉시 중단 (페이드 없이 바로 멈춤)
+  // 전체 정지: 재생 중인 모든 BGM+SFX를 즉시 중단 (페이드 없이 바로 멈춤)
   const handlePanicStop = useCallback(() => {
     activeNodesRef.current.forEach((nodeData) => {
       if (nodeData.timeoutId) clearTimeout(nodeData.timeoutId);
       if (nodeData.source) { nodeData.source.onended = null; try { nodeData.source.stop(); } catch (e) {} }
     });
     activeNodesRef.current.clear();
+    sfxNodesRef.current.forEach((source) => {
+      source.onended = null;
+      try { source.stop(); } catch (e) {}
+    });
+    sfxNodesRef.current.clear();
     setBgmUIStates({});
     setActiveKeys(new Set());
     showToast('전체 정지되었습니다', 'success');
@@ -462,6 +470,8 @@ const SoundBoard = () => {
         source.buffer = soundObj.audioBuffer;
         source.connect(gainNode);
         gainNode.connect(ctx.destination);
+        sfxNodesRef.current.add(source);
+        source.onended = () => sfxNodesRef.current.delete(source);
         source.start(0);
       }
     } else {
