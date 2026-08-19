@@ -952,8 +952,8 @@ const SoundBoard = () => {
               <span className="text-base">💡</span> 설정 가이드
             </h3>
             <div className="flex flex-wrap items-center gap-x-5 gap-y-1 text-[10px] sm:text-xs opacity-90">
-              <span className="flex items-center gap-1"><strong className="text-white">📁 파일:</strong> 내 컴퓨터 음원 (새로고침 시 초기화됨)</span>
-              <span className="flex items-center gap-1"><strong className="text-white">🔗 주소(추천):</strong> 인터넷 링크 (설정 자동 저장됨)</span>
+              <span className="flex items-center gap-1"><strong className="text-white">📁 파일:</strong> 내 컴퓨터 음원 (새로고침에도 저장됨)</span>
+              <span className="flex items-center gap-1"><strong className="text-white">🔗 내보내기:</strong> 100M 이상 용량일 경우 내보내기 불가</span>
               <span className="flex items-center gap-1"><strong className="text-white">🔊 Vol:</strong> 자판별 개별 볼륨 세밀 조절</span>
             </div>
           </div>
