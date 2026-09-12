@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { saveSoundFile, deleteSoundFile, loadAllSoundFiles } from './db.js';
-import { INITIAL_MAPPINGS, STORAGE_KEY, SFX_VOL_KEY, formatTime, blobToBase64 } from './constants.js';
+import { INITIAL_MAPPINGS, STORAGE_KEY, SFX_VOL_KEY, blobToBase64 } from './constants.js';
 import { useAudioEngine } from './hooks/useAudioEngine.js';
 import { useCueList } from './hooks/useCueList.js';
 import KeycapButton from './components/KeycapButton.jsx';
@@ -34,7 +34,7 @@ const SoundBoard = () => {
   const [activeKeys, setActiveKeys] = useState(new Set());
   const [isEditMode, setIsEditMode] = useState(false);
   const [toast, setToast] = useState(null);
-  const [, forceTick] = useState(0); // BGM 재생 진행바 업데이트용 강제 리렌더
+  const [, forceTick] = useState(0);
   const [pendingDeleteCode, setPendingDeleteCode] = useState(null);
   const [pendingImportFile, setPendingImportFile] = useState(null);
 
@@ -55,20 +55,17 @@ const SoundBoard = () => {
     toastTimerRef.current = setTimeout(() => setToast(null), 3000);
   }, []);
 
-  // 🔊 오디오 엔진 (AudioContext는 이 훅 안에서만, initAudioContext()로만 생성)
   const {
-    initAudioContext, bgmUIStates, stopBGM, fadeOutBGM,
-    handleBGMPlayback, playSfx, getPlaybackInfo, handlePanicStop: enginePanicStop,
+  initAudioContext, bgmUIStates, sfxPlayingCodes, stopBGM, fadeOutBGM, seekBGM,
+  handleBGMPlayback, toggleSfx, getPlaybackInfo, handlePanicStop: enginePanicStop,
   } = useAudioEngine({ mappingsRef, sfxVolumeRef });
 
-  // 🎬 큐 리스트
   const {
-    cueList, cueIndex, isCueMode, setIsCueMode,
-    cueAddSelection, setCueAddSelection, isCueModeRef,
-    triggerNextCue, resetCue, addCue, removeCue, moveCue, clearCueList, setCueList, setCueIndex,
-  } = useCueList({ mappingsRef, playSfx, handleBGMPlayback, showToast });
+  cueList, cueIndex, isCueMode, setIsCueMode,
+  cueAddSelection, setCueAddSelection, isCueModeRef,
+  triggerNextCue, resetCue, addCue, removeCue, moveCue, clearCueList, setCueList, setCueIndex,
+  } = useCueList({ mappingsRef, playSfx: toggleSfx, handleBGMPlayback, showToast });
 
-  // 설정(라벨/볼륨/loop) 저장
   useEffect(() => {
     const id = setTimeout(() => {
       const toSave = mappings.map(({ code, soundLabel, loop, volume }) => ({ code, soundLabel, loop, volume }));
@@ -78,8 +75,6 @@ const SoundBoard = () => {
     return () => clearTimeout(id);
   }, [mappings, sfxVolume]);
 
-  // 파일 업로드로 등록한 음원 복원 (IndexedDB에 저장된 원본 Blob -> 재decode)
-  // ✅ URL 자동 로드 useEffect를 제거해서 AudioContext가 여기서만(initAudioContext 경유) 만들어집니다.
   useEffect(() => {
     const restoreUploadedFiles = async () => {
       try {
@@ -102,7 +97,6 @@ const SoundBoard = () => {
     restoreUploadedFiles();
   }, [initAudioContext]);
 
-  // BGM 재생 중일 때만 0.25초마다 진행바 갱신
   useEffect(() => {
     const hasPlaying = Object.values(bgmUIStates).some(s => s === 'playing');
     if (!hasPlaying) return;
@@ -117,7 +111,7 @@ const SoundBoard = () => {
     if (isDown) {
       setActiveKeys(prev => new Set(prev).add(code));
       if (soundObj.type === 'sfx') {
-        playSfx(soundObj);
+        toggleSfx(soundObj);
       } else if (soundObj.type === 'bgm') {
         handleBGMPlayback(soundObj, 'toggle');
       }
@@ -128,7 +122,7 @@ const SoundBoard = () => {
         return next;
       });
     }
-  }, [playSfx, handleBGMPlayback]);
+  }, [toggleSfx, handleBGMPlayback]);
 
   const handlePanicStop = useCallback(() => {
     enginePanicStop();
@@ -136,8 +130,6 @@ const SoundBoard = () => {
     showToast('전체 정지되었습니다', 'success');
   }, [enginePanicStop, showToast]);
 
-  // 전역 키보드 단축키
-  // ✅ SELECT/TEXTAREA에 포커스가 있을 때도 단축키가 오작동하지 않도록 범위 확장
   useEffect(() => {
     const isTypingTarget = () => ['INPUT', 'SELECT', 'TEXTAREA'].includes(document.activeElement.tagName);
 
@@ -180,7 +172,7 @@ const SoundBoard = () => {
       const audioBuffer = await ctx.decodeAudioData(arrayBuffer);
       const defaultLabel = file.name.replace(/\.[^/.]+$/, '');
       stopBGM(code);
-      await saveSoundFile(code, file); // 원본 파일을 IndexedDB에 저장 -> 새로고침해도 유지
+      await saveSoundFile(code, file);
       setMappings(prev => prev.map(s => s.code === code ? { ...s, audioBuffer, soundLabel: defaultLabel, isDecoding: false } : s));
       showToast(`${defaultLabel} 등록 완료`, 'success');
     } catch (error) {
@@ -198,7 +190,6 @@ const SoundBoard = () => {
     showToast('음원이 삭제되었습니다', 'success');
   }, [stopBGM, showToast]);
 
-  // ✅ 삭제 확인창
   const requestDeleteSound = useCallback((code) => setPendingDeleteCode(code), []);
   const cancelDeleteSound = useCallback(() => setPendingDeleteCode(null), []);
   const confirmDeleteSound = useCallback(() => {
@@ -209,7 +200,7 @@ const SoundBoard = () => {
   const handleExportSettings = useCallback(async () => {
     try {
       showToast('내보내기 준비 중...', 'success');
-      const fileBlobs = await loadAllSoundFiles(); // { code: Blob }
+      const fileBlobs = await loadAllSoundFiles();
       const soundsExport = await Promise.all(mappingsRef.current.map(async (s) => {
         let fileData = null, fileType = null;
         if (fileBlobs[s.code]) {
@@ -243,7 +234,6 @@ const SoundBoard = () => {
     }
   }, [showToast, cueList]);
 
-  // ✅ 가져오기: 파일 선택 시 바로 실행하지 않고 확인창을 먼저 띄움
   const handleImportFileSelected = useCallback((event) => {
     const file = event.target.files[0];
     if (!file) return;
@@ -306,11 +296,6 @@ const SoundBoard = () => {
 
   const handleSettingChange = useCallback((code, setting, value) => {
     setMappings(prev => prev.map(s => s.code === code ? { ...s, [setting]: value } : s));
-
-    if (setting === 'volume' || setting === 'loop') {
-      // 재생 중인 노드에도 즉시 반영 (엔진 내부 상태이므로 useAudioEngine에서 직접 접근하지 않고
-      // handleBGMPlayback을 거치지 않는 실시간 반영은 엔진 훅 내부의 activeNodesRef를 통해 이뤄집니다)
-    }
   }, []);
 
   const getSound = (code) => mappings.find(s => s.code === code);
@@ -440,17 +425,17 @@ const SoundBoard = () => {
             <div className="flex flex-col gap-3 sm:gap-4 bg-[#222731] p-4 sm:p-6 rounded-xl shadow-inner border border-black/20">
               <div className="flex gap-3 sm:gap-4 ml-0">
                 {['KeyQ', 'KeyW', 'KeyE', 'KeyR'].map(code => (
-                  <KeycapButton key={code} sound={getSound(code)} isActive={activeKeys.has(code)} isEditMode={isEditMode} bgmUIState={null} isCueTarget={isCueMode && !isEditMode && cueList[cueIndex + 1] === code} onAction={handleSoundAction} onFileUpload={handleFileUpload} onSettingChange={handleSettingChange} onDelete={requestDeleteSound} />
+                  <KeycapButton key={code} sound={getSound(code)} isActive={activeKeys.has(code)} isEditMode={isEditMode} bgmUIState={sfxPlayingCodes.has(code) ? 'playing' : null} isCueTarget={isCueMode && !isEditMode && cueList[cueIndex + 1] === code} onAction={handleSoundAction} onFileUpload={handleFileUpload} onSettingChange={handleSettingChange} onDelete={requestDeleteSound} />
                 ))}
               </div>
               <div className="flex gap-3 sm:gap-4 ml-4 sm:ml-6">
                 {['KeyA', 'KeyS', 'KeyD', 'KeyF'].map(code => (
-                  <KeycapButton key={code} sound={getSound(code)} isActive={activeKeys.has(code)} isEditMode={isEditMode} bgmUIState={null} isCueTarget={isCueMode && !isEditMode && cueList[cueIndex + 1] === code} onAction={handleSoundAction} onFileUpload={handleFileUpload} onSettingChange={handleSettingChange} onDelete={requestDeleteSound} />
+                  <KeycapButton key={code} sound={getSound(code)} isActive={activeKeys.has(code)} isEditMode={isEditMode} bgmUIState={sfxPlayingCodes.has(code) ? 'playing' : null} isCueTarget={isCueMode && !isEditMode && cueList[cueIndex + 1] === code} onAction={handleSoundAction} onFileUpload={handleFileUpload} onSettingChange={handleSettingChange} onDelete={requestDeleteSound} />
                 ))}
               </div>
               <div className="flex gap-3 sm:gap-4 ml-8 sm:ml-12">
                 {['KeyZ', 'KeyX', 'KeyC', 'KeyV'].map(code => (
-                  <KeycapButton key={code} sound={getSound(code)} isActive={activeKeys.has(code)} isEditMode={isEditMode} bgmUIState={null} isCueTarget={isCueMode && !isEditMode && cueList[cueIndex + 1] === code} onAction={handleSoundAction} onFileUpload={handleFileUpload} onSettingChange={handleSettingChange} onDelete={requestDeleteSound} />
+                  <KeycapButton key={code} sound={getSound(code)} isActive={activeKeys.has(code)} isEditMode={isEditMode} bgmUIState={sfxPlayingCodes.has(code) ? 'playing' : null} isCueTarget={isCueMode && !isEditMode && cueList[cueIndex + 1] === code} onAction={handleSoundAction} onFileUpload={handleFileUpload} onSettingChange={handleSettingChange} onDelete={requestDeleteSound} />
                 ))}
               </div>
             </div>
@@ -477,8 +462,8 @@ const SoundBoard = () => {
         handleBGMPlayback={handleBGMPlayback}
         fadeOutBGM={fadeOutBGM}
         stopBGM={stopBGM}
+        seekBGM={seekBGM}
         handleSettingChange={handleSettingChange}
-        formatTime={formatTime}
       />
 
       <style>{`

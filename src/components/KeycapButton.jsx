@@ -17,7 +17,6 @@ const KeycapButton = memo(({
     if (canPlay) onAction(sound.code, false);
   };
 
-  // 키보드(Enter/Space) 접근성: 스크린리더·스위치 컨트롤 사용자도 자판을 누를 수 있도록
   const handleKeyDown = (e) => {
     if (e.key !== 'Enter' && e.key !== ' ') return;
     e.preventDefault();

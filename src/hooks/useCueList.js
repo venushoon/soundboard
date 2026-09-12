@@ -7,7 +7,7 @@ export function useCueList({ mappingsRef, playSfx, handleBGMPlayback, showToast 
     if (saved) { try { return JSON.parse(saved); } catch (e) { return []; } }
     return [];
   });
-  const [cueIndex, setCueIndex] = useState(-1); // -1 = 시작 전
+  const [cueIndex, setCueIndex] = useState(-1);
   const [isCueMode, setIsCueMode] = useState(false);
   const [cueAddSelection, setCueAddSelection] = useState('');
 
@@ -59,7 +59,7 @@ export function useCueList({ mappingsRef, playSfx, handleBGMPlayback, showToast 
 
   const removeCue = useCallback((idx) => {
     setCueList(prev => prev.filter((_, i) => i !== idx));
-    setCueIndex(-1); // 목록이 바뀌면 진행 상태 초기화
+    setCueIndex(-1);
   }, []);
 
   const moveCue = useCallback((idx, dir) => {
@@ -81,5 +81,6 @@ export function useCueList({ mappingsRef, playSfx, handleBGMPlayback, showToast 
     cueList, cueIndex, isCueMode, setIsCueMode,
     cueAddSelection, setCueAddSelection, isCueModeRef,
     triggerNextCue, resetCue, addCue, removeCue, moveCue, clearCueList,
+    setCueList, setCueIndex,
   };
 }

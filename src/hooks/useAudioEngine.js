@@ -3,8 +3,9 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 export function useAudioEngine({ mappingsRef, sfxVolumeRef }) {
   const audioCtxRef = useRef(null);
   const activeNodesRef = useRef(new Map()); // BGM 노드 (code -> nodeData)
-  const sfxNodesRef = useRef(new Set());    // 재생 중인 SFX 소스 (전체정지용)
+  const sfxNodesRef = useRef(new Map());    // 재생 중인 SFX (code -> { source, gainNode })
   const [bgmUIStates, setBgmUIStates] = useState({});
+  const [sfxPlayingCodes, setSfxPlayingCodes] = useState(() => new Set());
 
   const initAudioContext = useCallback(() => {
     if (!audioCtxRef.current) {
@@ -18,6 +19,10 @@ export function useAudioEngine({ mappingsRef, sfxVolumeRef }) {
     const nextState = {};
     activeNodesRef.current.forEach((nodeData, code) => { nextState[code] = nodeData.state; });
     setBgmUIStates(nextState);
+  }, []);
+
+  const syncSfxStateToUI = useCallback(() => {
+    setSfxPlayingCodes(new Set(sfxNodesRef.current.keys()));
   }, []);
 
   const stopBGM = useCallback((code) => {
@@ -113,7 +118,53 @@ export function useAudioEngine({ mappingsRef, sfxVolumeRef }) {
     }
   }, [initAudioContext, fadeOutBGM, stopBGM, syncBGMStateToUI, mappingsRef]);
 
-  const playSfx = useCallback((soundObj) => {
+  const seekBGM = useCallback((code, targetTime) => {
+    const ctx = audioCtxRef.current;
+    const nodeData = activeNodesRef.current.get(code);
+    if (!ctx || !nodeData || !nodeData.buffer) return;
+
+    const duration = nodeData.buffer.duration;
+    const clampedTime = Math.min(Math.max(targetTime, 0), Math.max(duration - 0.01, 0));
+    const wasPlaying = nodeData.state === 'playing';
+
+    if (nodeData.timeoutId) clearTimeout(nodeData.timeoutId);
+    if (nodeData.source) {
+      nodeData.source.onended = null;
+      try { nodeData.source.stop(); } catch (e) {}
+    }
+
+    nodeData.startOffset = clampedTime;
+
+    if (wasPlaying) {
+      const sound = mappingsRef.current.find(s => s.code === code);
+      const newSource = ctx.createBufferSource();
+      newSource.buffer = nodeData.buffer;
+      newSource.loop = sound?.loop ?? false;
+      newSource.connect(nodeData.gainNode);
+      newSource.onended = () => stopBGM(code);
+      newSource.start(0, clampedTime);
+
+      nodeData.source = newSource;
+      nodeData.startTime = ctx.currentTime;
+      nodeData.state = 'playing';
+    } else {
+      nodeData.state = 'paused';
+    }
+
+    syncBGMStateToUI();
+  }, [stopBGM, syncBGMStateToUI, mappingsRef]);
+
+  // 🔁 SFX 토글: 재생 중이 아니면 재생, 이미 재생 중이면 즉시 정지
+  const toggleSfx = useCallback((soundObj) => {
+    const existing = sfxNodesRef.current.get(soundObj.code);
+    if (existing) {
+      existing.source.onended = null;
+      try { existing.source.stop(); } catch (e) {}
+      sfxNodesRef.current.delete(soundObj.code);
+      syncSfxStateToUI();
+      return;
+    }
+
     const ctx = initAudioContext();
     if (!ctx) return;
     const source = ctx.createBufferSource();
@@ -122,10 +173,14 @@ export function useAudioEngine({ mappingsRef, sfxVolumeRef }) {
     source.buffer = soundObj.audioBuffer;
     source.connect(gainNode);
     gainNode.connect(ctx.destination);
-    sfxNodesRef.current.add(source);
-    source.onended = () => sfxNodesRef.current.delete(source);
+    source.onended = () => {
+      sfxNodesRef.current.delete(soundObj.code);
+      syncSfxStateToUI();
+    };
+    sfxNodesRef.current.set(soundObj.code, { source, gainNode });
     source.start(0);
-  }, [initAudioContext, sfxVolumeRef]);
+    syncSfxStateToUI();
+  }, [initAudioContext, sfxVolumeRef, syncSfxStateToUI]);
 
   const getPlaybackInfo = useCallback((code) => {
     const nodeData = activeNodesRef.current.get(code);
@@ -146,15 +201,15 @@ export function useAudioEngine({ mappingsRef, sfxVolumeRef }) {
       if (nodeData.source) { nodeData.source.onended = null; try { nodeData.source.stop(); } catch (e) {} }
     });
     activeNodesRef.current.clear();
-    sfxNodesRef.current.forEach((source) => {
+    sfxNodesRef.current.forEach(({ source }) => {
       source.onended = null;
       try { source.stop(); } catch (e) {}
     });
     sfxNodesRef.current.clear();
     setBgmUIStates({});
+    setSfxPlayingCodes(new Set());
   }, []);
 
-  // 언마운트 시 오디오 정리
   useEffect(() => {
     return () => {
       activeNodesRef.current.forEach((nodeData) => {
@@ -168,10 +223,12 @@ export function useAudioEngine({ mappingsRef, sfxVolumeRef }) {
   return {
     initAudioContext,
     bgmUIStates,
+    sfxPlayingCodes,
     stopBGM,
     fadeOutBGM,
+    seekBGM,
     handleBGMPlayback,
-    playSfx,
+    toggleSfx,
     getPlaybackInfo,
     handlePanicStop,
   };

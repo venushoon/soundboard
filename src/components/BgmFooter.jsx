@@ -1,6 +1,47 @@
+import { useState } from 'react';
+import { formatTime } from '../constants.js';
+
+function BgmProgressBar({ elapsed, duration, onSeek }) {
+  const [dragValue, setDragValue] = useState(null);
+  const safeDuration = duration > 0 ? duration : 0.01;
+  const displayValue = Math.min(dragValue ?? elapsed, safeDuration);
+  const pct = safeDuration > 0 ? (displayValue / safeDuration) * 100 : 0;
+
+  const commitSeek = (e) => {
+    const value = parseFloat(e.target.value);
+    onSeek(value);
+    setDragValue(null);
+  };
+
+  return (
+    <div className="px-1">
+      <input
+        type="range"
+        min="0"
+        max={safeDuration}
+        step="0.01"
+        value={displayValue}
+        onChange={(e) => setDragValue(parseFloat(e.target.value))}
+        onMouseUp={commitSeek}
+        onTouchEnd={commitSeek}
+        onKeyUp={commitSeek}
+        aria-label="재생 위치"
+        style={{
+          background: `linear-gradient(to right, #3b82f6 0%, #3b82f6 ${pct}%, #334155 ${pct}%, #334155 100%)`,
+        }}
+        className="w-full h-1.5 rounded-lg appearance-none cursor-pointer accent-blue-500 mb-1"
+      />
+      <div className="flex justify-between text-[10px] text-slate-500 font-mono">
+        <span>{formatTime(displayValue)}</span>
+        <span>{formatTime(duration)}</span>
+      </div>
+    </div>
+  );
+}
+
 export default function BgmFooter({
   bgmUIStates, getSound, getPlaybackInfo,
-  handleBGMPlayback, fadeOutBGM, stopBGM, handleSettingChange, formatTime,
+  handleBGMPlayback, fadeOutBGM, stopBGM, seekBGM, handleSettingChange,
 }) {
   if (Object.keys(bgmUIStates).length === 0) return null;
 
@@ -11,7 +52,6 @@ export default function BgmFooter({
           const soundData = getSound(code);
           if (!soundData) return null;
           const info = getPlaybackInfo(code);
-          const pct = info && info.duration > 0 ? (info.elapsed / info.duration) * 100 : 0;
 
           return (
             <div key={code} className="flex flex-col gap-3 bg-[#222731] border border-slate-700/50 rounded-lg p-3 min-w-[320px] flex-grow max-w-md shadow-lg">
@@ -53,15 +93,11 @@ export default function BgmFooter({
               </div>
 
               {info && (
-                <div className="px-1">
-                  <div className="h-1 bg-slate-700 rounded-full overflow-hidden mb-1">
-                    <div className="h-full bg-blue-500" style={{ width: `${pct}%` }} />
-                  </div>
-                  <div className="flex justify-between text-[10px] text-slate-500 font-mono">
-                    <span>{formatTime(info.elapsed)}</span>
-                    <span>{formatTime(info.duration)}</span>
-                  </div>
-                </div>
+                <BgmProgressBar
+                  elapsed={info.elapsed}
+                  duration={info.duration}
+                  onSeek={(time) => seekBGM(code, time)}
+                />
               )}
 
               <div className="flex items-center justify-between gap-4 px-1">
