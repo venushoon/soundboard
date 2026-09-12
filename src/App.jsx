@@ -1,199 +1,13 @@
-import React, { useState, useEffect, useCallback, useRef, memo } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { saveSoundFile, deleteSoundFile, loadAllSoundFiles } from './db.js';
-
-// 안정성을 위해 버전 넘버를 v10으로 올립니다. (캐시 완벽 초기화)
-const STORAGE_KEY = 'soundboard_settings_v10';
-const SFX_VOL_KEY = 'soundboard_sfx_vol_v10';
-const CUE_KEY = 'soundboard_cue_list_v1';
-
-const INITIAL_MAPPINGS = [
-  // --- 1열 (Q, W, E, R) ---
-  { code: 'KeyQ', keyLabel: 'Q', soundLabel: '정답 딩동댕', audioBuffer: null, color: 'bg-green-500', type: 'sfx', isDecoding: false, audioType: 'file', url: '', volume: 1.0 },
-  { code: 'KeyW', keyLabel: 'W', soundLabel: '오답 땡', audioBuffer: null, color: 'bg-red-500', type: 'sfx', isDecoding: false, audioType: 'file', url: '', volume: 1.0 },
-  { code: 'KeyE', keyLabel: 'E', soundLabel: '박수 함성', audioBuffer: null, color: 'bg-blue-500', type: 'sfx', isDecoding: false, audioType: 'file', url: '', volume: 1.0 },
-  { code: 'KeyR', keyLabel: 'R', soundLabel: '환호성', audioBuffer: null, color: 'bg-emerald-500', type: 'sfx', isDecoding: false, audioType: 'file', url: '', volume: 1.0 },
-  
-  // --- 2열 (A, S, D, F) ---
-  { code: 'KeyA', keyLabel: 'A', soundLabel: '두구두구', audioBuffer: null, color: 'bg-purple-500', type: 'sfx', isDecoding: false, audioType: 'file', url: '', volume: 1.0 },
-  { code: 'KeyS', keyLabel: 'S', soundLabel: '웃음 소리', audioBuffer: null, color: 'bg-yellow-500', type: 'sfx', isDecoding: false, audioType: 'file', url: '', volume: 1.0 },
-  { code: 'KeyD', keyLabel: 'D', soundLabel: '등장 효과음', audioBuffer: null, color: 'bg-pink-500', type: 'sfx', isDecoding: false, audioType: 'file', url: '', volume: 1.0 },
-  { code: 'KeyF', keyLabel: 'F', soundLabel: '빠밤!', audioBuffer: null, color: 'bg-indigo-500', type: 'sfx', isDecoding: false, audioType: 'file', url: '', volume: 1.0 },
-  
-  // --- 3열 (Z, X, C, V) ---
-  { code: 'KeyZ', keyLabel: 'Z', soundLabel: '띠로링', audioBuffer: null, color: 'bg-cyan-500', type: 'sfx', isDecoding: false, audioType: 'file', url: '', volume: 1.0 },
-  { code: 'KeyX', keyLabel: 'X', soundLabel: '뿅 (점프)', audioBuffer: null, color: 'bg-fuchsia-500', type: 'sfx', isDecoding: false, audioType: 'file', url: '', volume: 1.0 },
-  { code: 'KeyC', keyLabel: 'C', soundLabel: '빰빠밤', audioBuffer: null, color: 'bg-lime-500', type: 'sfx', isDecoding: false, audioType: 'file', url: '', volume: 1.0 },
-  { code: 'KeyV', keyLabel: 'V', soundLabel: '휘리릭', audioBuffer: null, color: 'bg-rose-500', type: 'sfx', isDecoding: false, audioType: 'file', url: '', volume: 1.0 },
-
-  // --- BGM (숫자 키패드 7~3) ---
-  { code: 'Numpad7', keyLabel: 'Num 7', soundLabel: '메인 테마', audioBuffer: null, color: 'bg-indigo-600', type: 'bgm', isDecoding: false, loop: true, volume: 1.0, audioType: 'file', url: '' },
-  { code: 'Numpad8', keyLabel: 'Num 8', soundLabel: '마을 배경음', audioBuffer: null, color: 'bg-violet-600', type: 'bgm', isDecoding: false, loop: true, volume: 1.0, audioType: 'file', url: '' },
-  { code: 'Numpad9', keyLabel: 'Num 9', soundLabel: '전투/긴장', audioBuffer: null, color: 'bg-slate-700', type: 'bgm', isDecoding: false, loop: true, volume: 1.0, audioType: 'file', url: '' },
-  { code: 'Numpad4', keyLabel: 'Num 4', soundLabel: '슬픈 장면', audioBuffer: null, color: 'bg-teal-600', type: 'bgm', isDecoding: false, loop: true, volume: 1.0, audioType: 'file', url: '' },
-  { code: 'Numpad5', keyLabel: 'Num 5', soundLabel: '회상 씬', audioBuffer: null, color: 'bg-orange-600', type: 'bgm', isDecoding: false, loop: true, volume: 1.0, audioType: 'file', url: '' },
-  { code: 'Numpad6', keyLabel: 'Num 6', soundLabel: '엔딩 크레딧', audioBuffer: null, color: 'bg-rose-600', type: 'bgm', isDecoding: false, loop: true, volume: 1.0, audioType: 'file', url: '' },
-  { code: 'Numpad1', keyLabel: 'Num 1', soundLabel: '쉬는 시간', audioBuffer: null, color: 'bg-sky-600', type: 'bgm', isDecoding: false, loop: true, volume: 1.0, audioType: 'file', url: '' },
-  { code: 'Numpad2', keyLabel: 'Num 2', soundLabel: '행사 시작', audioBuffer: null, color: 'bg-amber-600', type: 'bgm', isDecoding: false, loop: true, volume: 1.0, audioType: 'file', url: '' },
-  { code: 'Numpad3', keyLabel: 'Num 3', soundLabel: '시상식', audioBuffer: null, color: 'bg-fuchsia-700', type: 'bgm', isDecoding: false, loop: true, volume: 1.0, audioType: 'file', url: '' }
-];
-
-// mm:ss 형식으로 시간 포맷
-const formatTime = (sec) => {
-  if (!isFinite(sec) || sec < 0) sec = 0;
-  const m = Math.floor(sec / 60);
-  const s = Math.floor(sec % 60);
-  return `${m}:${s.toString().padStart(2, '0')}`;
-};
-
-// Blob -> base64 data URL 변환 (설정 내보내기용)
-const blobToBase64 = (blob) => new Promise((resolve, reject) => {
-  const reader = new FileReader();
-  reader.onloadend = () => resolve(reader.result);
-  reader.onerror = reject;
-  reader.readAsDataURL(blob);
-});
-
-const KeycapButton = memo(({ sound, isActive, isEditMode, bgmUIState, isCueTarget, onAction, onFileUpload, onSettingChange, onUrlLoad, onDelete }) => {
-  const fileInputRef = useRef(null);
-  const hasAudio = !!sound.audioBuffer;
-
-  const handlePointerDown = (e) => {
-    e.preventDefault();
-    if (!isEditMode && hasAudio && !sound.isDecoding) onAction(sound.code, true);
-  };
-
-  const handlePointerUp = (e) => {
-    e.preventDefault();
-    if (!isEditMode && hasAudio && !sound.isDecoding) onAction(sound.code, false);
-  };
-
-  return (
-    <div className="relative flex flex-col w-24 h-24 sm:w-28 sm:h-28">
-      <input type="file" accept="audio/*" ref={fileInputRef} className="hidden" onChange={(e) => onFileUpload(sound.code, e)} />
-      
-      {isEditMode ? (
-        <div className={`p-1.5 rounded-lg flex flex-col justify-between border-2 border-dashed h-full transition-colors ${sound.isDecoding ? 'border-yellow-500 bg-yellow-900/30' : hasAudio ? 'border-emerald-500 bg-slate-800' : 'border-slate-500 bg-slate-800/50'}`}>
-          <div className="flex justify-between items-center mb-1">
-            <span className="text-[10px] sm:text-xs font-bold text-slate-400 leading-none">{sound.keyLabel}</span>
-            <select 
-              value={sound.audioType || 'file'} 
-              onChange={(e) => onSettingChange(sound.code, 'audioType', e.target.value)}
-              disabled={sound.isDecoding}
-              className="bg-slate-700 text-slate-200 text-[9px] px-1 py-0.5 rounded outline-none border border-slate-600 cursor-pointer"
-            >
-              <option value="file">📁 파일</option>
-              <option value="url">🔗 주소</option>
-            </select>
-          </div>
-          
-          <div className="flex flex-col gap-1 mb-1">
-            <input
-              type="text"
-              value={sound.soundLabel}
-              onChange={(e) => onSettingChange(sound.code, 'soundLabel', e.target.value)}
-              className="w-full bg-slate-700 text-white text-[10px] sm:text-xs p-1 rounded border border-slate-600 focus:outline-none focus:border-blue-400 text-center"
-              placeholder="효과음 이름"
-              disabled={sound.isDecoding}
-            />
-            <div className="flex items-center gap-1.5 px-0.5">
-              <span className="text-[8px] text-slate-400 font-medium">Vol</span>
-              <input 
-                type="range" min="0" max="1" step="0.1" 
-                value={sound.volume} 
-                onChange={(e) => onSettingChange(sound.code, 'volume', parseFloat(e.target.value))}
-                className="w-full h-1 bg-slate-600 rounded-lg appearance-none cursor-pointer accent-emerald-400"
-              />
-            </div>
-          </div>
-          
-          {sound.audioType === 'url' ? (
-            <div className="flex gap-1 h-[22px]">
-              <input 
-                type="text" 
-                value={sound.url || ''} 
-                onChange={(e) => onSettingChange(sound.code, 'url', e.target.value)}
-                placeholder="https://..." 
-                className="w-full bg-slate-800 text-white text-[8px] p-1 rounded border border-slate-600 focus:outline-none focus:border-blue-400"
-                disabled={sound.isDecoding}
-              />
-              <button 
-                onClick={() => onUrlLoad(sound.code, sound.url)}
-                disabled={sound.isDecoding || !sound.url}
-                className="bg-blue-600 hover:bg-blue-500 text-white text-[9px] px-1.5 rounded flex-shrink-0 disabled:opacity-50 transition-colors"
-              >
-                적용
-              </button>
-            </div>
-          ) : (
-            <div className="flex gap-1 h-[22px]">
-              <button 
-                onClick={() => fileInputRef.current?.click()} 
-                disabled={sound.isDecoding}
-                className={`flex-grow text-[10px] font-medium py-0.5 rounded transition-colors h-[22px] shadow-sm ${sound.isDecoding ? 'bg-yellow-600 text-yellow-100' : hasAudio ? 'bg-slate-600 hover:bg-slate-500 text-white' : 'bg-blue-600 hover:bg-blue-500 text-white'}`}
-              >
-                {hasAudio ? '파일 변경' : '파일 등록'}
-              </button>
-              {hasAudio && !sound.isDecoding && (
-                <button 
-                  onClick={() => onDelete(sound.code)} 
-                  title="비어있음으로 되돌리기"
-                  className="flex-shrink-0 w-[22px] text-[10px] rounded bg-rose-900/60 hover:bg-rose-700 text-rose-200 hover:text-white transition-colors shadow-sm"
-                >
-                  ✕
-                </button>
-              )}
-            </div>
-          )}
-        </div>
-      ) : (
-        <button
-          onMouseDown={handlePointerDown}
-          onMouseUp={handlePointerUp}
-          onMouseLeave={handlePointerUp}
-          onTouchStart={handlePointerDown}
-          onTouchEnd={handlePointerUp}
-          disabled={!hasAudio || sound.isDecoding}
-          className={`
-            relative w-full h-full rounded-xl flex flex-col items-center justify-center p-2
-            transition-all duration-75 select-none outline-none
-            ${!hasAudio ? 'bg-slate-800 border-2 border-dashed border-slate-600 opacity-60 shadow-none mt-1' : `border border-slate-700/50 ${sound.color}`}
-            ${hasAudio && !isActive ? 'shadow-[0_6px_0_rgba(0,0,0,0.6),0_8px_10px_rgba(0,0,0,0.4)] transform -translate-y-1' : ''}
-            ${isActive && hasAudio && !sound.isDecoding ? 'shadow-[0_1px_0_rgba(0,0,0,0.8)] transform translate-y-1 brightness-90' : ''}
-            ${bgmUIState === 'playing' ? 'ring-2 ring-green-400 shadow-[0_0_15px_rgba(74,222,128,0.5),0_6px_0_rgba(0,0,0,0.6)]' : ''}
-            ${isCueTarget ? 'ring-4 ring-green-400 shadow-[0_0_20px_rgba(74,222,128,0.7)] scale-105' : ''}
-            text-white cursor-pointer
-          `}
-        >
-          {isCueTarget && (
-            <div className="absolute -top-2 -right-2 w-4 h-4 rounded-full bg-green-400 animate-ping" />
-          )}
-          {hasAudio && bgmUIState && (
-            <div className="absolute top-1 right-1.5 text-xs drop-shadow-md">
-              {bgmUIState === 'playing' && <span className="inline-block animate-pulse text-green-300">🔊</span>}
-              {bgmUIState === 'paused' && <span className="opacity-70 text-amber-300">⏸️</span>}
-              {bgmUIState === 'fading' && <span className="text-amber-300">📉</span>}
-            </div>
-          )}
-
-          <span className="absolute top-1.5 left-2 text-[11px] sm:text-xs font-black opacity-60 drop-shadow-sm flex items-center gap-1">
-            {sound.keyLabel}
-            {sound.audioType === 'url' && hasAudio && <span className="text-[8px] opacity-70">🔗</span>}
-          </span>
-          
-          <div className="flex flex-col items-center mt-3">
-            {!hasAudio ? (
-              <span className="text-[10px] font-medium opacity-60">비어있음</span>
-            ) : (
-              <span className="text-xs sm:text-sm font-bold text-center px-1 leading-tight break-keep drop-shadow-md">
-                {sound.isDecoding ? '로딩...' : sound.soundLabel}
-              </span>
-            )}
-          </div>
-        </button>
-      )}
-    </div>
-  );
-});
+import { INITIAL_MAPPINGS, STORAGE_KEY, SFX_VOL_KEY, formatTime, blobToBase64 } from './constants.js';
+import { useAudioEngine } from './hooks/useAudioEngine.js';
+import { useCueList } from './hooks/useCueList.js';
+import KeycapButton from './components/KeycapButton.jsx';
+import ConfirmDialog from './components/ConfirmDialog.jsx';
+import BgmFooter from './components/BgmFooter.jsx';
+import { CueBuilderPanel, CueGoBar } from './components/CuePanel.jsx';
+import { ExportImportBar, EditGuideBar } from './components/EditPanels.jsx';
 
 const SoundBoard = () => {
   const [mappings, setMappings] = useState(() => {
@@ -203,7 +17,9 @@ const SoundBoard = () => {
         const parsed = JSON.parse(saved);
         return INITIAL_MAPPINGS.map(init => {
           const found = parsed.find(p => p.code === init.code);
-          return found ? { ...init, soundLabel: found.soundLabel, loop: found.loop ?? init.loop, volume: found.volume ?? init.volume, audioType: found.audioType ?? init.audioType, url: found.url ?? init.url } : init;
+          return found
+            ? { ...init, soundLabel: found.soundLabel, loop: found.loop ?? init.loop, volume: found.volume ?? init.volume }
+            : init;
         });
       } catch (e) { return INITIAL_MAPPINGS; }
     }
@@ -217,42 +33,21 @@ const SoundBoard = () => {
 
   const [activeKeys, setActiveKeys] = useState(new Set());
   const [isEditMode, setIsEditMode] = useState(false);
-  const [bgmUIStates, setBgmUIStates] = useState({}); 
   const [toast, setToast] = useState(null);
   const [, forceTick] = useState(0); // BGM 재생 진행바 업데이트용 강제 리렌더
+  const [pendingDeleteCode, setPendingDeleteCode] = useState(null);
+  const [pendingImportFile, setPendingImportFile] = useState(null);
 
-  const [cueList, setCueList] = useState(() => {
-    const saved = localStorage.getItem(CUE_KEY);
-    if (saved) { try { return JSON.parse(saved); } catch (e) { return []; } }
-    return [];
-  });
-  const [cueIndex, setCueIndex] = useState(-1); // -1 = 시작 전
-  const [isCueMode, setIsCueMode] = useState(false);
-  const [cueAddSelection, setCueAddSelection] = useState('');
-  
-  const audioCtxRef = useRef(null);
-  const activeNodesRef = useRef(new Map());
-  const sfxNodesRef = useRef(new Set()); // 재생 중인 SFX 소스 추적 (전체정지용)
   const toastTimerRef = useRef(null);
-  
+  const importInputRef = useRef(null);
+
   const mappingsRef = useRef(mappings);
   const isEditModeRef = useRef(isEditMode);
   const sfxVolumeRef = useRef(sfxVolume);
-  const cueListRef = useRef(cueList);
-  const cueIndexRef = useRef(cueIndex);
-  const isCueModeRef = useRef(isCueMode);
-  
+
   useEffect(() => { mappingsRef.current = mappings; }, [mappings]);
   useEffect(() => { isEditModeRef.current = isEditMode; }, [isEditMode]);
   useEffect(() => { sfxVolumeRef.current = sfxVolume; }, [sfxVolume]);
-  useEffect(() => { cueListRef.current = cueList; }, [cueList]);
-  useEffect(() => { cueIndexRef.current = cueIndex; }, [cueIndex]);
-  useEffect(() => { isCueModeRef.current = isCueMode; }, [isCueMode]);
-
-  useEffect(() => {
-    const id = setTimeout(() => localStorage.setItem(CUE_KEY, JSON.stringify(cueList)), 300);
-    return () => clearTimeout(id);
-  }, [cueList]);
 
   const showToast = useCallback((msg, type = 'error') => {
     setToast({ msg, type });
@@ -260,46 +55,31 @@ const SoundBoard = () => {
     toastTimerRef.current = setTimeout(() => setToast(null), 3000);
   }, []);
 
+  // 🔊 오디오 엔진 (AudioContext는 이 훅 안에서만, initAudioContext()로만 생성)
+  const {
+    initAudioContext, bgmUIStates, stopBGM, fadeOutBGM,
+    handleBGMPlayback, playSfx, getPlaybackInfo, handlePanicStop: enginePanicStop,
+  } = useAudioEngine({ mappingsRef, sfxVolumeRef });
+
+  // 🎬 큐 리스트
+  const {
+    cueList, cueIndex, isCueMode, setIsCueMode,
+    cueAddSelection, setCueAddSelection, isCueModeRef,
+    triggerNextCue, resetCue, addCue, removeCue, moveCue, clearCueList, setCueList, setCueIndex,
+  } = useCueList({ mappingsRef, playSfx, handleBGMPlayback, showToast });
+
+  // 설정(라벨/볼륨/loop) 저장
   useEffect(() => {
     const id = setTimeout(() => {
-      const toSave = mappings.map(({ code, soundLabel, loop, volume, audioType, url }) => ({ code, soundLabel, loop, volume, audioType, url }));
+      const toSave = mappings.map(({ code, soundLabel, loop, volume }) => ({ code, soundLabel, loop, volume }));
       localStorage.setItem(STORAGE_KEY, JSON.stringify(toSave));
       localStorage.setItem(SFX_VOL_KEY, sfxVolume.toString());
     }, 300);
     return () => clearTimeout(id);
   }, [mappings, sfxVolume]);
 
-  const initAudioContext = useCallback(() => {
-    if (!audioCtxRef.current) audioCtxRef.current = new (window.AudioContext || window.webkitAudioContext)();
-    if (audioCtxRef.current.state === 'suspended') audioCtxRef.current.resume();
-    return audioCtxRef.current;
-  }, []);
-
-  useEffect(() => {
-    const loadSavedUrls = async () => {
-      const ctx = new (window.AudioContext || window.webkitAudioContext)();
-      if (!audioCtxRef.current) audioCtxRef.current = ctx;
-      
-      mappingsRef.current.forEach(async (sound) => {
-        if (sound.audioType === 'url' && sound.url && !sound.audioBuffer && !sound.isDecoding) {
-          try {
-            setMappings(prev => prev.map(s => s.code === sound.code ? { ...s, isDecoding: true } : s));
-            const response = await fetch(sound.url);
-            if (!response.ok) throw new Error("Network Error");
-            const arrayBuffer = await response.arrayBuffer();
-            const audioBuffer = await ctx.decodeAudioData(arrayBuffer);
-            setMappings(prev => prev.map(s => s.code === sound.code ? { ...s, audioBuffer, isDecoding: false } : s));
-          } catch (e) {
-            console.warn(`URL 자동 로드 실패 (${sound.code}):`, e);
-            setMappings(prev => prev.map(s => s.code === sound.code ? { ...s, isDecoding: false } : s));
-          }
-        }
-      });
-    };
-    loadSavedUrls();
-  }, []);
-
   // 파일 업로드로 등록한 음원 복원 (IndexedDB에 저장된 원본 Blob -> 재decode)
+  // ✅ URL 자동 로드 useEffect를 제거해서 AudioContext가 여기서만(initAudioContext 경유) 만들어집니다.
   useEffect(() => {
     const restoreUploadedFiles = async () => {
       try {
@@ -316,129 +96,19 @@ const SoundBoard = () => {
           }
         }
       } catch (e) {
-        // IndexedDB 미지원/비공개 브라우징 등 -> 조용히 건너뜀
         console.warn('IndexedDB 복원 실패:', e);
       }
     };
     restoreUploadedFiles();
-  }, []);
+  }, [initAudioContext]);
 
-  // BGM 재생 중일 때만 0.25초마다 진행바 갱신 (재생 없으면 인터벌 안 돌림)
+  // BGM 재생 중일 때만 0.25초마다 진행바 갱신
   useEffect(() => {
     const hasPlaying = Object.values(bgmUIStates).some(s => s === 'playing');
     if (!hasPlaying) return;
     const id = setInterval(() => forceTick(t => t + 1), 250);
     return () => clearInterval(id);
   }, [bgmUIStates]);
-
-  const getPlaybackInfo = useCallback((code) => {
-    const nodeData = activeNodesRef.current.get(code);
-    if (!nodeData || !nodeData.buffer) return null;
-    const duration = nodeData.buffer.duration;
-    const ctx = audioCtxRef.current;
-    let elapsed = nodeData.state === 'playing' && ctx
-      ? nodeData.startOffset + (ctx.currentTime - nodeData.startTime)
-      : nodeData.startOffset;
-    const sound = mappingsRef.current.find(s => s.code === code);
-    elapsed = sound?.loop ? elapsed % duration : Math.min(Math.max(elapsed, 0), duration);
-    return { elapsed, duration };
-  }, []);
-
-  const syncBGMStateToUI = useCallback(() => {
-    const nextState = {};
-    activeNodesRef.current.forEach((nodeData, code) => { nextState[code] = nodeData.state; });
-    setBgmUIStates(nextState);
-  }, []);
-
-  const stopBGM = useCallback((code) => {
-    const nodeData = activeNodesRef.current.get(code);
-    if (nodeData) {
-      if (nodeData.timeoutId) clearTimeout(nodeData.timeoutId);
-      if (nodeData.source) {
-        nodeData.source.onended = null;
-        try { nodeData.source.stop(); } catch (e) {}
-      }
-      activeNodesRef.current.delete(code);
-    }
-    syncBGMStateToUI();
-  }, [syncBGMStateToUI]);
-
-  const fadeOutBGM = useCallback((code) => {
-    const nodeData = activeNodesRef.current.get(code);
-    const ctx = audioCtxRef.current;
-    if (!nodeData || !ctx || nodeData.state !== 'playing') return;
-
-    if (nodeData.timeoutId) clearTimeout(nodeData.timeoutId);
-    nodeData.state = 'fading';
-    
-    const currTime = ctx.currentTime;
-    const fadeDuration = 2.0;
-    nodeData.gainNode.gain.cancelScheduledValues(currTime);
-    nodeData.gainNode.gain.setValueAtTime(nodeData.gainNode.gain.value, currTime);
-    nodeData.gainNode.gain.linearRampToValueAtTime(0.001, currTime + fadeDuration);
-
-    nodeData.timeoutId = setTimeout(() => stopBGM(code), fadeDuration * 1000);
-    syncBGMStateToUI();
-  }, [stopBGM, syncBGMStateToUI]);
-
-  const handleBGMPlayback = useCallback((baseSoundObj, action = 'toggle') => {
-    const ctx = initAudioContext();
-    if (!ctx) return;
-    const currentSoundObj = mappingsRef.current.find(s => s.code === baseSoundObj.code) || baseSoundObj;
-    const nodeData = activeNodesRef.current.get(currentSoundObj.code);
-
-    if (nodeData) {
-      if (nodeData.state === 'fading') return; 
-      if (nodeData.state === 'playing' && (action === 'toggle' || action === 'pause')) {
-        const elapsed = ctx.currentTime - nodeData.startTime;
-        nodeData.source.onended = null;
-        try { nodeData.source.stop(); } catch(e){}
-        nodeData.startOffset += elapsed;
-        nodeData.state = 'paused';
-        syncBGMStateToUI();
-        return;
-      } 
-      if (nodeData.state === 'paused' && (action === 'toggle' || action === 'play')) {
-        const newSource = ctx.createBufferSource();
-        newSource.buffer = nodeData.buffer;
-        newSource.loop = currentSoundObj.loop;
-        newSource.connect(nodeData.gainNode);
-        nodeData.gainNode.gain.value = currentSoundObj.volume; 
-        
-        const duration = nodeData.buffer.duration;
-        const offset = currentSoundObj.loop ? nodeData.startOffset % duration : Math.min(nodeData.startOffset, Math.max(0, duration - 0.01));
-        newSource.onended = () => stopBGM(currentSoundObj.code);
-        newSource.start(0, offset);
-        
-        nodeData.source = newSource;
-        nodeData.startTime = ctx.currentTime;
-        nodeData.state = 'playing';
-        syncBGMStateToUI();
-        return;
-      }
-    }
-
-    if (action === 'toggle' || action === 'play') {
-      activeNodesRef.current.forEach((_, existingCode) => {
-        if (existingCode !== currentSoundObj.code) fadeOutBGM(existingCode);
-      });
-
-      const source = ctx.createBufferSource();
-      const gainNode = ctx.createGain();
-      source.buffer = currentSoundObj.audioBuffer;
-      source.loop = currentSoundObj.loop;
-      gainNode.gain.value = currentSoundObj.volume;
-      source.connect(gainNode);
-      gainNode.connect(ctx.destination);
-      source.onended = () => stopBGM(currentSoundObj.code);
-      source.start(0);
-      
-      activeNodesRef.current.set(currentSoundObj.code, {
-        source, gainNode, buffer: currentSoundObj.audioBuffer, startTime: ctx.currentTime, startOffset: 0, state: 'playing', timeoutId: null
-      });
-      syncBGMStateToUI();
-    }
-  }, [initAudioContext, fadeOutBGM, stopBGM, syncBGMStateToUI]);
 
   const handleSoundAction = useCallback((code, isDown) => {
     const soundObj = mappingsRef.current.find(s => s.code === code);
@@ -447,18 +117,7 @@ const SoundBoard = () => {
     if (isDown) {
       setActiveKeys(prev => new Set(prev).add(code));
       if (soundObj.type === 'sfx') {
-        const ctx = initAudioContext();
-        if (ctx) {
-          const source = ctx.createBufferSource();
-          const gainNode = ctx.createGain();
-          gainNode.gain.value = sfxVolumeRef.current * soundObj.volume;
-          source.buffer = soundObj.audioBuffer;
-          source.connect(gainNode);
-          gainNode.connect(ctx.destination);
-          sfxNodesRef.current.add(source);
-          source.onended = () => sfxNodesRef.current.delete(source);
-          source.start(0);
-        }
+        playSfx(soundObj);
       } else if (soundObj.type === 'bgm') {
         handleBGMPlayback(soundObj, 'toggle');
       }
@@ -469,88 +128,21 @@ const SoundBoard = () => {
         return next;
       });
     }
-  }, [initAudioContext, handleBGMPlayback]);
+  }, [playSfx, handleBGMPlayback]);
 
-  // 전체 정지: 재생 중인 모든 BGM+SFX를 즉시 중단 (페이드 없이 바로 멈춤)
   const handlePanicStop = useCallback(() => {
-    activeNodesRef.current.forEach((nodeData) => {
-      if (nodeData.timeoutId) clearTimeout(nodeData.timeoutId);
-      if (nodeData.source) { nodeData.source.onended = null; try { nodeData.source.stop(); } catch (e) {} }
-    });
-    activeNodesRef.current.clear();
-    sfxNodesRef.current.forEach((source) => {
-      source.onended = null;
-      try { source.stop(); } catch (e) {}
-    });
-    sfxNodesRef.current.clear();
-    setBgmUIStates({});
+    enginePanicStop();
     setActiveKeys(new Set());
     showToast('전체 정지되었습니다', 'success');
-  }, [showToast]);
+  }, [enginePanicStop, showToast]);
 
-  // 큐 모드: GO 실행 시 다음 큐의 사운드를 재생하고 커서를 한 칸 이동
-  const triggerNextCue = useCallback(() => {
-    const list = cueListRef.current;
-    if (list.length === 0) { showToast('등록된 큐가 없습니다', 'error'); return; }
-    const nextIndex = cueIndexRef.current + 1;
-    if (nextIndex >= list.length) { showToast('마지막 큐입니다', 'success'); return; }
-
-    const code = list[nextIndex];
-    const soundObj = mappingsRef.current.find(s => s.code === code);
-    if (!soundObj || !soundObj.audioBuffer) {
-      showToast('등록되지 않은 음원입니다. 다음 큐로 건너뜁니다.', 'error');
-      setCueIndex(nextIndex);
-      return;
-    }
-
-    if (soundObj.type === 'sfx') {
-      const ctx = initAudioContext();
-      if (ctx) {
-        const source = ctx.createBufferSource();
-        const gainNode = ctx.createGain();
-        gainNode.gain.value = sfxVolumeRef.current * soundObj.volume;
-        source.buffer = soundObj.audioBuffer;
-        source.connect(gainNode);
-        gainNode.connect(ctx.destination);
-        sfxNodesRef.current.add(source);
-        source.onended = () => sfxNodesRef.current.delete(source);
-        source.start(0);
-      }
-    } else {
-      handleBGMPlayback(soundObj, 'play');
-    }
-    setCueIndex(nextIndex);
-  }, [initAudioContext, handleBGMPlayback, showToast]);
-
-  const resetCue = useCallback(() => {
-    setCueIndex(-1);
-    showToast('큐가 처음으로 이동했습니다', 'success');
-  }, [showToast]);
-
-  const addCue = useCallback((code) => {
-    if (!code) return;
-    setCueList(prev => [...prev, code]);
-    setCueAddSelection('');
-  }, []);
-
-  const removeCue = useCallback((idx) => {
-    setCueList(prev => prev.filter((_, i) => i !== idx));
-    setCueIndex(-1); // 목록이 바뀌면 진행 상태 초기화
-  }, []);
-
-  const moveCue = useCallback((idx, dir) => {
-    setCueList(prev => {
-      const next = [...prev];
-      const target = idx + dir;
-      if (target < 0 || target >= next.length) return prev;
-      [next[idx], next[target]] = [next[target], next[idx]];
-      return next;
-    });
-  }, []);
-
+  // 전역 키보드 단축키
+  // ✅ SELECT/TEXTAREA에 포커스가 있을 때도 단축키가 오작동하지 않도록 범위 확장
   useEffect(() => {
+    const isTypingTarget = () => ['INPUT', 'SELECT', 'TEXTAREA'].includes(document.activeElement.tagName);
+
     const handleKeyDown = (e) => {
-      if (document.activeElement.tagName === 'INPUT') return;
+      if (isTypingTarget()) return;
       if (e.code === 'Escape') { e.preventDefault(); handlePanicStop(); return; }
       if (isCueModeRef.current && e.code === 'Space' && !isEditModeRef.current) {
         e.preventDefault();
@@ -561,7 +153,7 @@ const SoundBoard = () => {
       handleSoundAction(e.code, true);
     };
     const handleKeyUp = (e) => {
-      if (isEditModeRef.current) return;
+      if (isTypingTarget() || isEditModeRef.current) return;
       handleSoundAction(e.code, false);
     };
     window.addEventListener('keydown', handleKeyDown);
@@ -570,106 +162,68 @@ const SoundBoard = () => {
       window.removeEventListener('keydown', handleKeyDown);
       window.removeEventListener('keyup', handleKeyUp);
     };
-  }, [handleSoundAction, triggerNextCue, handlePanicStop]);
-
-  useEffect(() => {
-    return () => {
-      activeNodesRef.current.forEach((nodeData) => {
-        if (nodeData.timeoutId) clearTimeout(nodeData.timeoutId);
-        if (nodeData.source) { nodeData.source.onended = null; try { nodeData.source.stop(); } catch (e) {} }
-      });
-      if (audioCtxRef.current && audioCtxRef.current.state !== 'closed') audioCtxRef.current.close();
-    };
-  }, []);
+  }, [handleSoundAction, triggerNextCue, handlePanicStop, isCueModeRef]);
 
   const handleFileUpload = useCallback(async (code, event) => {
     const file = event.target.files[0];
     if (!file) return;
     setMappings(prev => prev.map(s => s.code === code ? { ...s, isDecoding: true } : s));
-    
+
     const ctx = initAudioContext();
     if (!ctx) {
       setMappings(prev => prev.map(s => s.code === code ? { ...s, isDecoding: false } : s));
-      showToast("오디오 엔진을 초기화할 수 없습니다.", "error"); return; 
+      showToast('오디오 엔진을 초기화할 수 없습니다.', 'error'); return;
     }
 
     try {
       const arrayBuffer = await file.arrayBuffer();
       const audioBuffer = await ctx.decodeAudioData(arrayBuffer);
-      const defaultLabel = file.name.replace(/\.[^/.]+$/, "");
+      const defaultLabel = file.name.replace(/\.[^/.]+$/, '');
       stopBGM(code);
       await saveSoundFile(code, file); // 원본 파일을 IndexedDB에 저장 -> 새로고침해도 유지
       setMappings(prev => prev.map(s => s.code === code ? { ...s, audioBuffer, soundLabel: defaultLabel, isDecoding: false } : s));
       showToast(`${defaultLabel} 등록 완료`, 'success');
     } catch (error) {
-      showToast("지원하지 않는 파일이거나 손상되었습니다.", 'error');
+      showToast('지원하지 않는 파일이거나 손상되었습니다.', 'error');
       setMappings(prev => prev.map(s => s.code === code ? { ...s, isDecoding: false } : s));
     } finally {
       event.target.value = null;
     }
   }, [initAudioContext, stopBGM, showToast]);
 
-  const handleUrlLoad = useCallback(async (code, url) => {
-    if (!url) return;
-    setMappings(prev => prev.map(s => s.code === code ? { ...s, isDecoding: true } : s));
-    
-    const ctx = initAudioContext();
-    if (!ctx) {
-      setMappings(prev => prev.map(s => s.code === code ? { ...s, isDecoding: false } : s));
-      showToast("오디오 엔진을 초기화할 수 없습니다.", "error"); return; 
-    }
-
-    try {
-      const response = await fetch(url);
-      if (!response.ok) throw new Error("Network response was not ok");
-      const arrayBuffer = await response.arrayBuffer();
-      const audioBuffer = await ctx.decodeAudioData(arrayBuffer);
-      
-      stopBGM(code);
-      setMappings(prev => prev.map(s => s.code === code ? { ...s, audioBuffer, isDecoding: false } : s));
-      showToast(`인터넷 주소 음원 연결 완료`, 'success');
-    } catch (error) {
-      console.error(error);
-      showToast("주소를 불러올 수 없습니다. (보안 정책에 막힌 주소일 수 있습니다)", 'error');
-      setMappings(prev => prev.map(s => s.code === code ? { ...s, isDecoding: false } : s));
-    }
-  }, [initAudioContext, stopBGM, showToast]);
-
   const handleDeleteSound = useCallback((code) => {
     stopBGM(code);
-    deleteSoundFile(code).catch(() => {}); // IndexedDB에 저장된 파일도 함께 제거
-    setMappings(prev => prev.map(s => s.code === code ? { ...s, audioBuffer: null, url: '' } : s));
+    deleteSoundFile(code).catch(() => {});
+    setMappings(prev => prev.map(s => s.code === code ? { ...s, audioBuffer: null } : s));
     showToast('음원이 삭제되었습니다', 'success');
   }, [stopBGM, showToast]);
 
-  // 설정 내보내기: 라벨/볼륨/큐리스트 + (파일 모드) 원본 음원을 base64로 JSON에 통째로 담음
+  // ✅ 삭제 확인창
+  const requestDeleteSound = useCallback((code) => setPendingDeleteCode(code), []);
+  const cancelDeleteSound = useCallback(() => setPendingDeleteCode(null), []);
+  const confirmDeleteSound = useCallback(() => {
+    if (pendingDeleteCode) handleDeleteSound(pendingDeleteCode);
+    setPendingDeleteCode(null);
+  }, [pendingDeleteCode, handleDeleteSound]);
+
   const handleExportSettings = useCallback(async () => {
     try {
       showToast('내보내기 준비 중...', 'success');
       const fileBlobs = await loadAllSoundFiles(); // { code: Blob }
       const soundsExport = await Promise.all(mappingsRef.current.map(async (s) => {
         let fileData = null, fileType = null;
-        if (s.audioType === 'file' && fileBlobs[s.code]) {
+        if (fileBlobs[s.code]) {
           fileData = await blobToBase64(fileBlobs[s.code]);
           fileType = fileBlobs[s.code].type || 'audio/mpeg';
         }
-        return {
-          code: s.code,
-          soundLabel: s.soundLabel,
-          loop: s.loop,
-          volume: s.volume,
-          audioType: s.audioType,
-          url: s.url || '',
-          fileData,
-          fileType,
-        };
+        return { code: s.code, soundLabel: s.soundLabel, loop: s.loop, volume: s.volume, fileData, fileType };
       }));
 
       const payload = {
-        version: 1,
+        version: 2,
         exportedAt: new Date().toISOString(),
         sfxVolume: sfxVolumeRef.current,
-        cueList: cueListRef.current,
+        cueList,
         sounds: soundsExport,
       };
 
@@ -687,11 +241,24 @@ const SoundBoard = () => {
       console.error(e);
       showToast('내보내기에 실패했습니다', 'error');
     }
-  }, [showToast]);
+  }, [showToast, cueList]);
 
-  // 설정 가져오기: JSON을 읽어 라벨/볼륨/큐리스트 복원 + (파일 모드) base64 음원을 다시 decode하여 즉시 재생 가능하게 함
-  const handleImportSettings = useCallback(async (event) => {
+  // ✅ 가져오기: 파일 선택 시 바로 실행하지 않고 확인창을 먼저 띄움
+  const handleImportFileSelected = useCallback((event) => {
     const file = event.target.files[0];
+    if (!file) return;
+    setPendingImportFile(file);
+  }, []);
+
+  const cancelImport = useCallback(() => {
+    setPendingImportFile(null);
+    if (importInputRef.current) importInputRef.current.value = null;
+  }, []);
+
+  const confirmImport = useCallback(async () => {
+    const file = pendingImportFile;
+    setPendingImportFile(null);
+    if (importInputRef.current) importInputRef.current.value = null;
     if (!file) return;
 
     try {
@@ -707,7 +274,7 @@ const SoundBoard = () => {
         if (!isKnownCode) continue;
 
         let audioBuffer = null;
-        if (s.audioType === 'file' && s.fileData) {
+        if (s.fileData) {
           try {
             const resp = await fetch(s.fileData);
             const blob = await resp.blob();
@@ -716,13 +283,6 @@ const SoundBoard = () => {
           } catch (e) {
             console.warn(`파일 복원 실패 (${s.code}):`, e);
           }
-        } else if (s.audioType === 'url' && s.url) {
-          try {
-            const resp = await fetch(s.url);
-            audioBuffer = await ctx.decodeAudioData(await resp.arrayBuffer());
-          } catch (e) {
-            console.warn(`URL 로드 실패 (${s.code}):`, e);
-          }
         }
 
         setMappings(prev => prev.map(m => m.code === s.code ? {
@@ -730,8 +290,6 @@ const SoundBoard = () => {
           soundLabel: s.soundLabel ?? m.soundLabel,
           loop: s.loop ?? m.loop,
           volume: s.volume ?? m.volume,
-          audioType: s.audioType ?? m.audioType,
-          url: s.url ?? m.url,
           audioBuffer: audioBuffer ?? m.audioBuffer,
         } : m));
       }
@@ -743,24 +301,15 @@ const SoundBoard = () => {
     } catch (e) {
       console.error(e);
       showToast('가져오기 실패: 올바른 설정 파일인지 확인하세요', 'error');
-    } finally {
-      event.target.value = null;
     }
-  }, [initAudioContext, showToast]);
+  }, [pendingImportFile, initAudioContext, showToast, setCueList]);
 
   const handleSettingChange = useCallback((code, setting, value) => {
     setMappings(prev => prev.map(s => s.code === code ? { ...s, [setting]: value } : s));
 
-    if (setting === 'audioType' && value === 'url') {
-      deleteSoundFile(code).catch(() => {}); // 파일 모드에서 저장했던 이전 음원 정리
-    }
-
     if (setting === 'volume' || setting === 'loop') {
-      const nodeData = activeNodesRef.current.get(code);
-      if (nodeData) {
-        if (setting === 'volume' && nodeData.state !== 'fading') nodeData.gainNode.gain.value = value;
-        else if (setting === 'loop' && nodeData.source) nodeData.source.loop = value; 
-      }
+      // 재생 중인 노드에도 즉시 반영 (엔진 내부 상태이므로 useAudioEngine에서 직접 접근하지 않고
+      // handleBGMPlayback을 거치지 않는 실시간 반영은 엔진 훅 내부의 activeNodesRef를 통해 이뤄집니다)
     }
   }, []);
 
@@ -768,16 +317,37 @@ const SoundBoard = () => {
 
   return (
     <div className="h-screen sm:h-[100dvh] flex flex-col bg-[#1e232a] text-slate-200 font-sans overflow-hidden">
-      
-      {/* 알림창 (Toast) - 사라지는 애니메이션 유지 */}
+
       {toast && (
-        <div className="fixed top-24 left-1/2 transform -translate-x-1/2 z-50 animate-toast pointer-events-none">
-          <div className={`px-4 py-3 rounded-full shadow-2xl border flex items-center gap-3 backdrop-blur-md ${toast.type === 'error' ? 'bg-rose-900/90 border-rose-500/50 text-rose-100' : 'bg-emerald-900/90 border-emerald-500/50 text-emerald-100'}`}>
-             <span className="text-xl leading-none">{toast.type === 'error' ? '⚠️' : '✅'}</span>
-             <span className="font-medium text-sm whitespace-nowrap">{toast.msg}</span>
+        <div className="fixed top-24 left-1/2 transform -translate-x-1/2 z-50 animate-toast pointer-events-none" role="status" aria-live="polite">
+          <div className={`px-4 py-3 rounded-full shadow-2xl border flex items-center gap-3 backdrop-blur-md ${
+            toast.type === 'error' ? 'bg-rose-900/90 border-rose-500/50 text-rose-100' : 'bg-emerald-900/90 border-emerald-500/50 text-emerald-100'
+          }`}>
+            <span className="text-xl leading-none">{toast.type === 'error' ? '⚠️' : '✅'}</span>
+            <span className="font-medium text-sm whitespace-nowrap">{toast.msg}</span>
           </div>
         </div>
       )}
+
+      <ConfirmDialog
+        open={!!pendingDeleteCode}
+        title="음원을 삭제할까요?"
+        message={`「${getSound(pendingDeleteCode)?.soundLabel || ''}」음원이 자판에서 제거됩니다. 이 작업은 되돌릴 수 없습니다.`}
+        confirmLabel="삭제"
+        danger
+        onConfirm={confirmDeleteSound}
+        onCancel={cancelDeleteSound}
+      />
+
+      <ConfirmDialog
+        open={!!pendingImportFile}
+        title="현재 설정을 덮어쓸까요?"
+        message="설정 파일을 가져오면 지금 등록된 자판·볼륨·큐 목록이 파일 내용으로 덮어써집니다."
+        confirmLabel="가져오기"
+        danger
+        onConfirm={confirmImport}
+        onCancel={cancelImport}
+      />
 
       <header className="flex-shrink-0 p-3 sm:p-5 border-b border-black/40 bg-[#171a1f] z-30 shadow-md">
         <div className="max-w-6xl mx-auto flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
@@ -787,30 +357,37 @@ const SoundBoard = () => {
             </h1>
             <div className="flex items-center gap-2 mt-3 text-sm text-slate-400 font-medium">
               <span>⚡ 전체 효과음(SFX) 볼륨:</span>
-              <input 
-                type="range" min="0" max="1" step="0.01" 
+              <input
+                type="range" min="0" max="1" step="0.01"
                 value={sfxVolume} onChange={(e) => setSfxVolume(parseFloat(e.target.value))}
+                aria-label="전체 효과음 볼륨"
                 className="w-24 h-1.5 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-emerald-500"
               />
             </div>
           </div>
           <div className="flex items-center gap-2">
-            <button 
+            <button
               onClick={() => setIsCueMode(v => !v)}
-              className={`px-4 py-2.5 rounded-lg font-bold text-sm transition-all flex items-center gap-1.5 border-b-4 active:border-b-0 active:translate-y-1 ${isCueMode ? 'bg-purple-600 border-purple-800 text-white shadow-[0_0_15px_rgba(168,85,247,0.4)]' : 'bg-slate-700 border-slate-900 text-slate-200'}`}
+              aria-pressed={isCueMode}
+              className={`px-4 py-2.5 rounded-lg font-bold text-sm transition-all flex items-center gap-1.5 border-b-4 active:border-b-0 active:translate-y-1 ${
+                isCueMode ? 'bg-purple-600 border-purple-800 text-white shadow-[0_0_15px_rgba(168,85,247,0.4)]' : 'bg-slate-700 border-slate-900 text-slate-200'
+              }`}
             >
               🎬 큐 모드
             </button>
-            <button 
+            <button
               onClick={handlePanicStop}
               className="px-4 py-2.5 rounded-lg font-bold text-sm bg-rose-600 border-b-4 border-rose-800 text-white active:border-b-0 active:translate-y-1 transition-all flex items-center gap-1.5"
               title="재생 중인 모든 소리를 즉시 정지 (Esc)"
             >
               🛑 전체 정지
             </button>
-            <button 
+            <button
               onClick={() => setIsEditMode(!isEditMode)}
-              className={`px-5 py-2.5 rounded-lg font-bold text-sm transition-all flex items-center gap-2 border-b-4 active:border-b-0 active:translate-y-1 ${isEditMode ? 'bg-emerald-500 border-emerald-700 text-white shadow-[0_0_15px_rgba(16,185,129,0.4)]' : 'bg-slate-700 border-slate-900 text-slate-200'}`}
+              aria-pressed={isEditMode}
+              className={`px-5 py-2.5 rounded-lg font-bold text-sm transition-all flex items-center gap-2 border-b-4 active:border-b-0 active:translate-y-1 ${
+                isEditMode ? 'bg-emerald-500 border-emerald-700 text-white shadow-[0_0_15px_rgba(16,185,129,0.4)]' : 'bg-slate-700 border-slate-900 text-slate-200'
+              }`}
             >
               {isEditMode ? '💾 편집 완료' : '⚙️ 자판 설정'}
             </button>
@@ -820,147 +397,42 @@ const SoundBoard = () => {
 
       <main className="flex-grow p-3 lg:p-6 overflow-y-auto overflow-x-auto z-10 custom-scrollbar flex flex-col items-center justify-start">
 
-        {/* 💾 설정 내보내기/가져오기 (편집 모드에서만 노출) */}
         {isEditMode && (
-          <div className="w-full max-w-5xl bg-slate-800/40 border border-slate-600/40 rounded-lg p-4 mb-4 flex flex-wrap items-center justify-between gap-3">
-            <div className="text-xs text-slate-400">
-              <strong className="text-white">💾 설정 백업/공유:</strong> 지금 등록된 자판·볼륨·큐 목록을 파일로 저장하거나, 다른 컴퓨터에서 저장한 파일을 불러옵니다.
-            </div>
-            <div className="flex gap-2 flex-shrink-0">
-              <button
-                onClick={handleExportSettings}
-                className="text-xs font-medium px-3 py-2 rounded bg-slate-700 hover:bg-slate-600 text-slate-200 transition-colors flex items-center gap-1.5"
-              >
-                ⬇️ 내보내기
-              </button>
-              <label className="text-xs font-medium px-3 py-2 rounded bg-blue-600 hover:bg-blue-500 text-white transition-colors flex items-center gap-1.5 cursor-pointer">
-                ⬆️ 가져오기
-                <input type="file" accept="application/json" className="hidden" onChange={handleImportSettings} />
-              </label>
-            </div>
-          </div>
+          <ExportImportBar
+            onExport={handleExportSettings}
+            onImportSelected={handleImportFileSelected}
+            importInputRef={importInputRef}
+          />
         )}
 
-        {/* 🎬 큐 시퀀스 편집 패널 (편집 모드에서만 노출) */}
         {isEditMode && (
-          <div className="w-full max-w-5xl bg-purple-900/20 border border-purple-500/30 rounded-lg p-4 mb-4 text-purple-200 shadow-inner">
-            <h3 className="font-bold text-purple-300 mb-3 flex items-center gap-1.5 text-sm">
-              <span className="text-base">🎬</span> 큐 시퀀스 구성 <span className="text-[10px] font-normal text-purple-400/80">(큐 모드에서 Space로 순서대로 재생)</span>
-            </h3>
-            <div className="flex flex-wrap gap-2 mb-3">
-              {cueList.length === 0 && <span className="text-xs text-purple-400/70">등록된 큐가 없습니다. 아래에서 사운드를 골라 추가하세요.</span>}
-              {cueList.map((code, idx) => {
-                const s = getSound(code);
-                return (
-                  <div key={`${code}-${idx}`} className="flex items-center gap-1 bg-slate-800 border border-purple-500/40 rounded-full pl-3 pr-1.5 py-1 text-xs">
-                    <span className="text-purple-300 font-bold">{idx + 1}</span>
-                    <span className="max-w-[100px] truncate">{s ? s.soundLabel : code}</span>
-                    <button onClick={() => moveCue(idx, -1)} disabled={idx === 0} className="w-5 h-5 rounded hover:bg-slate-700 disabled:opacity-30 text-slate-300">↑</button>
-                    <button onClick={() => moveCue(idx, 1)} disabled={idx === cueList.length - 1} className="w-5 h-5 rounded hover:bg-slate-700 disabled:opacity-30 text-slate-300">↓</button>
-                    <button onClick={() => removeCue(idx)} className="w-5 h-5 rounded hover:bg-rose-900/50 text-rose-400">✕</button>
-                  </div>
-                );
-              })}
-            </div>
-            <div className="flex gap-2 items-center">
-              <select 
-                value={cueAddSelection} 
-                onChange={(e) => setCueAddSelection(e.target.value)}
-                className="bg-slate-700 text-slate-200 text-xs rounded px-2 py-1.5 border border-slate-600 outline-none max-w-[220px]"
-              >
-                <option value="">사운드 선택...</option>
-                {mappings.filter(s => s.audioBuffer).map(s => (
-                  <option key={s.code} value={s.code}>{s.keyLabel} — {s.soundLabel}</option>
-                ))}
-              </select>
-              <button 
-                onClick={() => addCue(cueAddSelection)} 
-                disabled={!cueAddSelection}
-                className="bg-purple-600 hover:bg-purple-500 disabled:opacity-40 text-white text-xs font-medium px-3 py-1.5 rounded transition-colors"
-              >
-                + 큐에 추가
-              </button>
-              {cueList.length > 0 && (
-                <button onClick={() => { setCueList([]); setCueIndex(-1); }} className="ml-auto text-[10px] text-rose-400 hover:text-rose-300">
-                  전체 삭제
-                </button>
-              )}
-            </div>
-          </div>
+          <CueBuilderPanel
+            cueList={cueList}
+            mappings={mappings}
+            cueAddSelection={cueAddSelection}
+            setCueAddSelection={setCueAddSelection}
+            addCue={addCue}
+            moveCue={moveCue}
+            removeCue={removeCue}
+            clearCueList={clearCueList}
+            getSound={getSound}
+          />
         )}
 
-        {/* 🎬 큐 GO 바 (큐 모드 켜져있고 편집 중이 아닐 때 노출) */}
         {isCueMode && !isEditMode && (
-          <div className="w-full max-w-5xl bg-[#222731] border border-purple-500/40 rounded-xl p-4 mb-4 shadow-lg">
-            <div className="flex flex-wrap items-center justify-between gap-4">
-              <div>
-                {cueIndex >= 0 && (
-                  <div className="text-[10px] text-emerald-400 mb-0.5 font-medium flex items-center gap-1">
-                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                    방금 재생됨 · {cueIndex + 1}번 「{getSound(cueList[cueIndex])?.soundLabel || cueList[cueIndex]}」
-                  </div>
-                )}
-                <div className="text-[10px] text-purple-400 mb-1 font-medium">
-                  {cueList.length === 0 ? '큐 없음' : `다음 큐 · ${Math.min(cueIndex + 2, cueList.length)} / ${cueList.length}`}
-                </div>
-                <div className="text-base font-bold text-white">
-                  {cueList.length === 0
-                    ? '편집 모드에서 큐를 먼저 구성하세요'
-                    : cueList[cueIndex + 1]
-                    ? (getSound(cueList[cueIndex + 1])?.soundLabel || '알 수 없음')
-                    : '🏁 마지막 큐입니다'}
-                </div>
-              </div>
-              <div className="flex items-center gap-2">
-                <button onClick={resetCue} disabled={cueIndex === -1} className="text-xs px-3 py-2.5 rounded-lg bg-slate-700 hover:bg-slate-600 disabled:opacity-40 transition-colors">
-                  ⏮ 처음으로
-                </button>
-                <button 
-                  onClick={triggerNextCue} 
-                  disabled={cueList.length === 0 || cueIndex + 1 >= cueList.length}
-                  className="bg-purple-600 hover:bg-purple-500 disabled:opacity-40 disabled:cursor-not-allowed text-white font-bold px-6 py-2.5 rounded-lg border-b-4 border-purple-800 active:border-b-0 active:translate-y-1 transition-all"
-                >
-                  GO ⎵
-                </button>
-              </div>
-            </div>
-            {cueList.length > 0 && (
-              <div className="flex gap-1.5 mt-3 flex-wrap">
-                {cueList.map((code, idx) => (
-                  <div
-                    key={idx}
-                    title={getSound(code)?.soundLabel || code}
-                    className={`w-3 h-3 rounded-sm transition-colors ${
-                      idx < cueIndex + 1
-                        ? 'bg-slate-600'
-                        : idx === cueIndex + 1
-                        ? 'bg-green-400 shadow-[0_0_6px_rgba(74,222,128,0.8)]'
-                        : 'bg-transparent border border-dashed border-slate-500'
-                    }`}
-                  />
-                ))}
-              </div>
-            )}
-          </div>
+          <CueGoBar
+            cueList={cueList}
+            cueIndex={cueIndex}
+            getSound={getSound}
+            resetCue={resetCue}
+            triggerNextCue={triggerNextCue}
+          />
         )}
 
-
-        {/* 🔥 수정된 자판 설정 가이드 (사라지지 않고 유지됨, 콤팩트한 한 줄 디자인) */}
-        {isEditMode && (
-          <div className="w-full max-w-5xl bg-blue-900/20 border border-blue-500/30 rounded-lg p-3 mb-4 text-blue-200 shadow-inner animate-fade-in flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
-            <h3 className="font-bold text-blue-400 flex items-center gap-1.5 text-sm whitespace-nowrap">
-              <span className="text-base">💡</span> 설정 가이드
-            </h3>
-            <div className="flex flex-wrap items-center gap-x-5 gap-y-1 text-[10px] sm:text-xs opacity-90">
-              <span className="flex items-center gap-1"><strong className="text-white">📁 파일:</strong> 내 컴퓨터 음원 (새로고침에도 저장됨)</span>
-              <span className="flex items-center gap-1"><strong className="text-white">🔗 내보내기:</strong> 100M 이상 용량일 경우 내보내기 불가</span>
-              <span className="flex items-center gap-1"><strong className="text-white">🔊 Vol:</strong> 자판별 개별 볼륨 세밀 조절</span>
-            </div>
-          </div>
-        )}
+        {isEditMode && <EditGuideBar />}
 
         <div className="bg-[#2a303c] p-4 sm:p-6 lg:p-8 rounded-2xl shadow-[inset_0_4px_10px_rgba(255,255,255,0.05),0_15px_25px_rgba(0,0,0,0.5)] border border-slate-600/30 flex flex-col xl:flex-row flex-wrap gap-6 xl:gap-10">
-          
+
           <div>
             <h2 className="text-lg font-bold mb-4 text-slate-400 flex items-center gap-2 ml-2">
               효과음 자판 <span className="text-[10px] font-normal text-emerald-400 bg-emerald-400/10 px-2 py-0.5 rounded">다중 재생</span>
@@ -968,17 +440,17 @@ const SoundBoard = () => {
             <div className="flex flex-col gap-3 sm:gap-4 bg-[#222731] p-4 sm:p-6 rounded-xl shadow-inner border border-black/20">
               <div className="flex gap-3 sm:gap-4 ml-0">
                 {['KeyQ', 'KeyW', 'KeyE', 'KeyR'].map(code => (
-                  <KeycapButton key={code} sound={getSound(code)} isActive={activeKeys.has(code)} isEditMode={isEditMode} bgmUIState={null} isCueTarget={isCueMode && !isEditMode && cueList[cueIndex + 1] === code} onAction={handleSoundAction} onFileUpload={handleFileUpload} onSettingChange={handleSettingChange} onUrlLoad={handleUrlLoad} onDelete={handleDeleteSound} />
+                  <KeycapButton key={code} sound={getSound(code)} isActive={activeKeys.has(code)} isEditMode={isEditMode} bgmUIState={null} isCueTarget={isCueMode && !isEditMode && cueList[cueIndex + 1] === code} onAction={handleSoundAction} onFileUpload={handleFileUpload} onSettingChange={handleSettingChange} onDelete={requestDeleteSound} />
                 ))}
               </div>
               <div className="flex gap-3 sm:gap-4 ml-4 sm:ml-6">
                 {['KeyA', 'KeyS', 'KeyD', 'KeyF'].map(code => (
-                  <KeycapButton key={code} sound={getSound(code)} isActive={activeKeys.has(code)} isEditMode={isEditMode} bgmUIState={null} isCueTarget={isCueMode && !isEditMode && cueList[cueIndex + 1] === code} onAction={handleSoundAction} onFileUpload={handleFileUpload} onSettingChange={handleSettingChange} onUrlLoad={handleUrlLoad} onDelete={handleDeleteSound} />
+                  <KeycapButton key={code} sound={getSound(code)} isActive={activeKeys.has(code)} isEditMode={isEditMode} bgmUIState={null} isCueTarget={isCueMode && !isEditMode && cueList[cueIndex + 1] === code} onAction={handleSoundAction} onFileUpload={handleFileUpload} onSettingChange={handleSettingChange} onDelete={requestDeleteSound} />
                 ))}
               </div>
               <div className="flex gap-3 sm:gap-4 ml-8 sm:ml-12">
                 {['KeyZ', 'KeyX', 'KeyC', 'KeyV'].map(code => (
-                  <KeycapButton key={code} sound={getSound(code)} isActive={activeKeys.has(code)} isEditMode={isEditMode} bgmUIState={null} isCueTarget={isCueMode && !isEditMode && cueList[cueIndex + 1] === code} onAction={handleSoundAction} onFileUpload={handleFileUpload} onSettingChange={handleSettingChange} onUrlLoad={handleUrlLoad} onDelete={handleDeleteSound} />
+                  <KeycapButton key={code} sound={getSound(code)} isActive={activeKeys.has(code)} isEditMode={isEditMode} bgmUIState={null} isCueTarget={isCueMode && !isEditMode && cueList[cueIndex + 1] === code} onAction={handleSoundAction} onFileUpload={handleFileUpload} onSettingChange={handleSettingChange} onDelete={requestDeleteSound} />
                 ))}
               </div>
             </div>
@@ -990,7 +462,7 @@ const SoundBoard = () => {
             </h2>
             <div className="grid grid-cols-3 gap-3 sm:gap-4 bg-[#222731] p-4 sm:p-6 rounded-xl shadow-inner border border-black/20 w-fit">
               {['Numpad7', 'Numpad8', 'Numpad9', 'Numpad4', 'Numpad5', 'Numpad6', 'Numpad1', 'Numpad2', 'Numpad3'].map(code => (
-                <KeycapButton key={code} sound={getSound(code)} isActive={activeKeys.has(code)} isEditMode={isEditMode} bgmUIState={bgmUIStates[code]} isCueTarget={isCueMode && !isEditMode && cueList[cueIndex + 1] === code} onAction={handleSoundAction} onFileUpload={handleFileUpload} onSettingChange={handleSettingChange} onUrlLoad={handleUrlLoad} onDelete={handleDeleteSound} />
+                <KeycapButton key={code} sound={getSound(code)} isActive={activeKeys.has(code)} isEditMode={isEditMode} bgmUIState={bgmUIStates[code]} isCueTarget={isCueMode && !isEditMode && cueList[cueIndex + 1] === code} onAction={handleSoundAction} onFileUpload={handleFileUpload} onSettingChange={handleSettingChange} onDelete={requestDeleteSound} />
               ))}
             </div>
           </div>
@@ -998,70 +470,27 @@ const SoundBoard = () => {
         </div>
       </main>
 
-      {Object.keys(bgmUIStates).length > 0 && (
-        <footer className="flex-shrink-0 bg-[#171a1f]/95 backdrop-blur-md border-t border-black/50 p-4 z-20 shadow-[0_-10px_30px_rgba(0,0,0,0.6)] animate-slide-up">
-          <div className="max-w-6xl mx-auto flex flex-wrap gap-4 items-center justify-center lg:justify-start">
-            {Object.entries(bgmUIStates).map(([code, uiState]) => {
-              const soundData = getSound(code);
-              if (!soundData) return null;
+      <BgmFooter
+        bgmUIStates={bgmUIStates}
+        getSound={getSound}
+        getPlaybackInfo={getPlaybackInfo}
+        handleBGMPlayback={handleBGMPlayback}
+        fadeOutBGM={fadeOutBGM}
+        stopBGM={stopBGM}
+        handleSettingChange={handleSettingChange}
+        formatTime={formatTime}
+      />
 
-              return (
-                <div key={code} className="flex flex-col gap-3 bg-[#222731] border border-slate-700/50 rounded-lg p-3 min-w-[320px] flex-grow max-w-md shadow-lg">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2.5 overflow-hidden w-full">
-                      <div className={`flex-shrink-0 w-2.5 h-2.5 rounded-full ${uiState === 'playing' ? 'bg-green-500 animate-pulse shadow-[0_0_8px_rgba(34,197,94,0.6)]' : uiState === 'fading' ? 'bg-amber-500' : 'bg-slate-500'}`}></div>
-                      <span className="font-bold text-sm truncate flex-grow mr-2 text-slate-200">
-                        {soundData.soundLabel} <span className="text-[10px] text-slate-500 font-normal">({soundData.keyLabel})</span>
-                      </span>
-                    </div>
-                    <div className="flex gap-1 flex-shrink-0">
-                      <button onClick={() => handleBGMPlayback(soundData, 'toggle')} disabled={uiState === 'fading'} className="w-9 h-9 bg-slate-700 hover:bg-slate-600 rounded">
-                        {uiState === 'paused' ? '▶️' : '⏸️'}
-                      </button>
-                      <button onClick={() => fadeOutBGM(code)} disabled={uiState === 'fading'} className="w-9 h-9 bg-slate-700 hover:bg-slate-600 rounded" title="페이드아웃">📉</button>
-                      <button onClick={() => stopBGM(code)} className="w-9 h-9 bg-rose-900/50 hover:bg-rose-700 text-rose-300 rounded">⏹️</button>
-                    </div>
-                  </div>
-                  {(() => {
-                    const info = getPlaybackInfo(code);
-                    if (!info) return null;
-                    const pct = info.duration > 0 ? (info.elapsed / info.duration) * 100 : 0;
-                    return (
-                      <div className="px-1">
-                        <div className="h-1 bg-slate-700 rounded-full overflow-hidden mb-1">
-                          <div className="h-full bg-blue-500" style={{ width: `${pct}%` }} />
-                        </div>
-                        <div className="flex justify-between text-[10px] text-slate-500 font-mono">
-                          <span>{formatTime(info.elapsed)}</span>
-                          <span>{formatTime(info.duration)}</span>
-                        </div>
-                      </div>
-                    );
-                  })()}
-                  <div className="flex items-center justify-between gap-4 px-1">
-                    <input type="range" min="0" max="1" step="0.01" value={soundData.volume} onChange={(e) => handleSettingChange(code, 'volume', parseFloat(e.target.value))} className="flex-grow h-1.5 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-blue-500"/>
-                    <button onClick={() => handleSettingChange(code, 'loop', !soundData.loop)} className={`flex-shrink-0 text-[10px] px-2 py-1 rounded border ${soundData.loop ? 'bg-blue-900/50 border-blue-500/50 text-blue-300' : 'bg-slate-800 border-slate-600 text-slate-500'}`}>
-                      {soundData.loop ? '🔁 반복 켬' : '➡️ 반복 끔'}
-                    </button>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </footer>
-      )}
-      
       <style>{`
-        /* 애니메이션 분리: 알림창(Toast)은 사라지고, 설명서(Guide)는 유지됨 */
         @keyframes toast-slide { 0%, 100% { transform: translate(-50%, -100%); opacity: 0; } 10%, 90% { transform: translate(-50%, 0); opacity: 1; } }
         .animate-toast { animation: toast-slide 3s ease-out forwards; }
-        
+
         @keyframes fade-in { from { opacity: 0; transform: translateY(-5px); } to { opacity: 1; transform: translateY(0); } }
         .animate-fade-in { animation: fade-in 0.3s ease-out forwards; }
 
         @keyframes slide-up { from { transform: translateY(100%); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
         .animate-slide-up { animation: slide-up 0.2s ease-out forwards; }
-        
+
         .custom-scrollbar::-webkit-scrollbar { width: 8px; height: 8px; }
         .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
         .custom-scrollbar::-webkit-scrollbar-thumb { background: rgba(71, 85, 105, 0.6); border-radius: 4px; }
