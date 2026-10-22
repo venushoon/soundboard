@@ -8,6 +8,8 @@ import ConfirmDialog from './components/ConfirmDialog.jsx';
 import BgmFooter from './components/BgmFooter.jsx';
 import { CueBuilderPanel, CueGoBar } from './components/CuePanel.jsx';
 import { ExportImportBar, EditGuideBar } from './components/EditPanels.jsx';
+import WindowPortal from './components/WindowPortal.jsx';
+import CuePlayerWindow from './components/CuePlayerWindow.jsx';
 
 const SoundBoard = () => {
   const [mappings, setMappings] = useState(() => {
@@ -37,6 +39,7 @@ const SoundBoard = () => {
   const [, forceTick] = useState(0);
   const [pendingDeleteCode, setPendingDeleteCode] = useState(null);
   const [pendingImportFile, setPendingImportFile] = useState(null);
+  const [cuePopupWin, setCuePopupWin] = useState(null);
 
   const toastTimerRef = useRef(null);
   const importInputRef = useRef(null);
@@ -56,15 +59,66 @@ const SoundBoard = () => {
   }, []);
 
   const {
-  initAudioContext, bgmUIStates, sfxPlayingCodes, stopBGM, fadeOutBGM, seekBGM,
-  handleBGMPlayback, toggleSfx, getPlaybackInfo, handlePanicStop: enginePanicStop,
+    initAudioContext, bgmUIStates, sfxPlayingCodes, stopBGM, fadeOutBGM, seekBGM,
+    handleBGMPlayback, toggleSfx, getPlaybackInfo, handlePanicStop: enginePanicStop,
   } = useAudioEngine({ mappingsRef, sfxVolumeRef });
 
   const {
-  cueList, cueIndex, isCueMode, setIsCueMode,
-  cueAddSelection, setCueAddSelection, isCueModeRef,
-  triggerNextCue, resetCue, addCue, removeCue, moveCue, clearCueList, setCueList, setCueIndex,
+    cueList, cueIndex, nextPlayableIndex, nextCueItem, nextCueCode,
+    isCueMode, setIsCueMode,
+    cueAddSelection, setCueAddSelection, isCueModeRef,
+    triggerNextCue, playCueAtIndex, selectNextCue, stepNextCue,
+    resetCue, addCue, addDivider, updateCueItem,
+    removeCue, moveCue, clearCueList, setCueList,
   } = useCueList({ mappingsRef, playSfx: toggleSfx, handleBGMPlayback, showToast });
+
+  const openCuePopupWindow = useCallback(() => {
+    initAudioContext();
+    if (cuePopupWin && !cuePopupWin.closed) {
+      cuePopupWin.focus();
+      setIsCueMode(true);
+      return;
+    }
+    const win = window.open(
+      '',
+      'SoundboardCuePlayer',
+      'width=540,height=840,left=120,top=80,resizable=yes,scrollbars=yes'
+    );
+    if (win) {
+      setCuePopupWin(win);
+      setIsCueMode(true);
+      win.focus();
+    } else {
+      setIsCueMode(true);
+      showToast('브라우저 팝업이 차단되었습니다. 주소창에서 팝업 허용 후 다시 눌러주세요.', 'error');
+    }
+  }, [cuePopupWin, initAudioContext, setIsCueMode, showToast]);
+
+  const closeCuePopupWindow = useCallback(() => {
+    setCuePopupWin((prev) => {
+      if (prev && !prev.closed) {
+        try { prev.close(); } catch { /* ignore */ }
+      }
+      return null;
+    });
+    setIsCueMode(false);
+  }, [setIsCueMode]);
+
+  const handleToggleCueMode = useCallback(() => {
+    if (isCueMode) {
+      closeCuePopupWindow();
+    } else {
+      openCuePopupWindow();
+    }
+  }, [isCueMode, closeCuePopupWindow, openCuePopupWindow]);
+
+  useEffect(() => {
+    return () => {
+      if (cuePopupWin && !cuePopupWin.closed) {
+        try { cuePopupWin.close(); } catch { /* ignore */ }
+      }
+    };
+  }, [cuePopupWin]);
 
   useEffect(() => {
     const id = setTimeout(() => {
@@ -98,7 +152,7 @@ const SoundBoard = () => {
   }, [initAudioContext]);
 
   useEffect(() => {
-    const hasPlaying = Object.values(bgmUIStates).some(s => s === 'playing');
+    const hasPlaying = Object.values(bgmUIStates).some(s => s === 'playing' || s === 'fading');
     if (!hasPlaying) return;
     const id = setInterval(() => forceTick(t => t + 1), 250);
     return () => clearInterval(id);
@@ -131,10 +185,11 @@ const SoundBoard = () => {
   }, [enginePanicStop, showToast]);
 
   useEffect(() => {
-    const isTypingTarget = () => ['INPUT', 'SELECT', 'TEXTAREA'].includes(document.activeElement.tagName);
+    const isTypingTarget = (doc = document) =>
+      ['INPUT', 'SELECT', 'TEXTAREA'].includes(doc.activeElement?.tagName);
 
     const handleKeyDown = (e) => {
-      if (isTypingTarget()) return;
+      if (isTypingTarget(document)) return;
       if (e.code === 'Escape') { e.preventDefault(); handlePanicStop(); return; }
       if (isCueModeRef.current && e.code === 'Space' && !isEditModeRef.current) {
         e.preventDefault();
@@ -145,7 +200,7 @@ const SoundBoard = () => {
       handleSoundAction(e.code, true);
     };
     const handleKeyUp = (e) => {
-      if (isTypingTarget() || isEditModeRef.current) return;
+      if (isTypingTarget(document) || isEditModeRef.current) return;
       handleSoundAction(e.code, false);
     };
     window.addEventListener('keydown', handleKeyDown);
@@ -155,6 +210,43 @@ const SoundBoard = () => {
       window.removeEventListener('keyup', handleKeyUp);
     };
   }, [handleSoundAction, triggerNextCue, handlePanicStop, isCueModeRef]);
+
+  // 독립 큐플레이어 창에서의 키보드 단축키 핸들러
+  const handlePopupKeyDown = useCallback((e, popupDoc) => {
+    const activeTag = popupDoc?.activeElement?.tagName;
+    if (['INPUT', 'SELECT', 'TEXTAREA'].includes(activeTag)) {
+      if (e.code === 'Escape') popupDoc.activeElement.blur();
+      return;
+    }
+    if (e.code === 'Escape') {
+      e.preventDefault();
+      handlePanicStop();
+      return;
+    }
+    if (e.code === 'Space') {
+      e.preventDefault();
+      triggerNextCue();
+      return;
+    }
+    if (e.code === 'ArrowUp') {
+      e.preventDefault();
+      stepNextCue(-1);
+      return;
+    }
+    if (e.code === 'ArrowDown') {
+      e.preventDefault();
+      stepNextCue(1);
+      return;
+    }
+    if (e.repeat) return;
+    handleSoundAction(e.code, true);
+  }, [handlePanicStop, triggerNextCue, stepNextCue, handleSoundAction]);
+
+  const handlePopupKeyUp = useCallback((e, popupDoc) => {
+    const activeTag = popupDoc?.activeElement?.tagName;
+    if (['INPUT', 'SELECT', 'TEXTAREA'].includes(activeTag)) return;
+    handleSoundAction(e.code, false);
+  }, [handleSoundAction]);
 
   const handleFileUpload = useCallback(async (code, event) => {
     const file = event.target.files[0];
@@ -299,9 +391,55 @@ const SoundBoard = () => {
   }, []);
 
   const getSound = (code) => mappings.find(s => s.code === code);
+  const isPopupOpen = !!(cuePopupWin && !cuePopupWin.closed);
 
   return (
     <div className="h-screen sm:h-[100dvh] flex flex-col bg-[#1e232a] text-slate-200 font-sans overflow-hidden">
+
+      {/* 독립 팝업 창 포털 렌더링 */}
+      {isCueMode && isPopupOpen && (
+        <WindowPortal
+          externalWindow={cuePopupWin}
+          onClose={closeCuePopupWindow}
+          onKeyDown={handlePopupKeyDown}
+          onKeyUp={handlePopupKeyUp}
+        >
+          <CuePlayerWindow
+            mappings={mappings}
+            getSound={getSound}
+            bgmUIStates={bgmUIStates}
+            sfxPlayingCodes={sfxPlayingCodes}
+            getPlaybackInfo={getPlaybackInfo}
+            handleBGMPlayback={handleBGMPlayback}
+            fadeOutBGM={fadeOutBGM}
+            stopBGM={stopBGM}
+            seekBGM={seekBGM}
+            handleSoundAction={handleSoundAction}
+            handleSettingChange={handleSettingChange}
+            sfxVolume={sfxVolume}
+            setSfxVolume={setSfxVolume}
+            handlePanicStop={handlePanicStop}
+            cueList={cueList}
+            cueIndex={cueIndex}
+            nextPlayableIndex={nextPlayableIndex}
+            nextCueItem={nextCueItem}
+            cueAddSelection={cueAddSelection}
+            setCueAddSelection={setCueAddSelection}
+            triggerNextCue={triggerNextCue}
+            playCueAtIndex={playCueAtIndex}
+            selectNextCue={selectNextCue}
+            stepNextCue={stepNextCue}
+            resetCue={resetCue}
+            addCue={addCue}
+            addDivider={addDivider}
+            updateCueItem={updateCueItem}
+            removeCue={removeCue}
+            moveCue={moveCue}
+            clearCueList={clearCueList}
+            onCloseWindow={closeCuePopupWindow}
+          />
+        </WindowPortal>
+      )}
 
       {toast && (
         <div className="fixed top-24 left-1/2 transform -translate-x-1/2 z-50 animate-toast pointer-events-none" role="status" aria-live="polite">
@@ -352,13 +490,14 @@ const SoundBoard = () => {
           </div>
           <div className="flex items-center gap-2">
             <button
-              onClick={() => setIsCueMode(v => !v)}
+              onClick={handleToggleCueMode}
               aria-pressed={isCueMode}
               className={`px-4 py-2.5 rounded-lg font-bold text-sm transition-all flex items-center gap-1.5 border-b-4 active:border-b-0 active:translate-y-1 ${
                 isCueMode ? 'bg-purple-600 border-purple-800 text-white shadow-[0_0_15px_rgba(168,85,247,0.4)]' : 'bg-slate-700 border-slate-900 text-slate-200'
               }`}
+              title="독립 팝업 창으로 큐플레이어를 실행합니다"
             >
-              🎬 큐 모드
+              🎬 {isCueMode ? '큐 모드 닫기' : '큐 모드'}
             </button>
             <button
               onClick={handlePanicStop}
@@ -397,10 +536,12 @@ const SoundBoard = () => {
             cueAddSelection={cueAddSelection}
             setCueAddSelection={setCueAddSelection}
             addCue={addCue}
+            addDivider={addDivider}
             moveCue={moveCue}
             removeCue={removeCue}
             clearCueList={clearCueList}
             getSound={getSound}
+            onOpenCueWindow={openCuePopupWindow}
           />
         )}
 
@@ -408,9 +549,13 @@ const SoundBoard = () => {
           <CueGoBar
             cueList={cueList}
             cueIndex={cueIndex}
+            nextPlayableIndex={nextPlayableIndex}
+            nextCueItem={nextCueItem}
             getSound={getSound}
             resetCue={resetCue}
             triggerNextCue={triggerNextCue}
+            isPopupOpen={isPopupOpen}
+            onFocusOrReopenPopup={openCuePopupWindow}
           />
         )}
 
@@ -425,17 +570,17 @@ const SoundBoard = () => {
             <div className="flex flex-col gap-3 sm:gap-4 bg-[#222731] p-4 sm:p-6 rounded-xl shadow-inner border border-black/20">
               <div className="flex gap-3 sm:gap-4 ml-0">
                 {['KeyQ', 'KeyW', 'KeyE', 'KeyR'].map(code => (
-                  <KeycapButton key={code} sound={getSound(code)} isActive={activeKeys.has(code)} isEditMode={isEditMode} bgmUIState={sfxPlayingCodes.has(code) ? 'playing' : null} isCueTarget={isCueMode && !isEditMode && cueList[cueIndex + 1] === code} onAction={handleSoundAction} onFileUpload={handleFileUpload} onSettingChange={handleSettingChange} onDelete={requestDeleteSound} />
+                  <KeycapButton key={code} sound={getSound(code)} isActive={activeKeys.has(code)} isEditMode={isEditMode} bgmUIState={sfxPlayingCodes.has(code) ? 'playing' : null} isCueTarget={isCueMode && !isEditMode && nextCueCode === code} onAction={handleSoundAction} onFileUpload={handleFileUpload} onSettingChange={handleSettingChange} onDelete={requestDeleteSound} />
                 ))}
               </div>
               <div className="flex gap-3 sm:gap-4 ml-4 sm:ml-6">
                 {['KeyA', 'KeyS', 'KeyD', 'KeyF'].map(code => (
-                  <KeycapButton key={code} sound={getSound(code)} isActive={activeKeys.has(code)} isEditMode={isEditMode} bgmUIState={sfxPlayingCodes.has(code) ? 'playing' : null} isCueTarget={isCueMode && !isEditMode && cueList[cueIndex + 1] === code} onAction={handleSoundAction} onFileUpload={handleFileUpload} onSettingChange={handleSettingChange} onDelete={requestDeleteSound} />
+                  <KeycapButton key={code} sound={getSound(code)} isActive={activeKeys.has(code)} isEditMode={isEditMode} bgmUIState={sfxPlayingCodes.has(code) ? 'playing' : null} isCueTarget={isCueMode && !isEditMode && nextCueCode === code} onAction={handleSoundAction} onFileUpload={handleFileUpload} onSettingChange={handleSettingChange} onDelete={requestDeleteSound} />
                 ))}
               </div>
               <div className="flex gap-3 sm:gap-4 ml-8 sm:ml-12">
                 {['KeyZ', 'KeyX', 'KeyC', 'KeyV'].map(code => (
-                  <KeycapButton key={code} sound={getSound(code)} isActive={activeKeys.has(code)} isEditMode={isEditMode} bgmUIState={sfxPlayingCodes.has(code) ? 'playing' : null} isCueTarget={isCueMode && !isEditMode && cueList[cueIndex + 1] === code} onAction={handleSoundAction} onFileUpload={handleFileUpload} onSettingChange={handleSettingChange} onDelete={requestDeleteSound} />
+                  <KeycapButton key={code} sound={getSound(code)} isActive={activeKeys.has(code)} isEditMode={isEditMode} bgmUIState={sfxPlayingCodes.has(code) ? 'playing' : null} isCueTarget={isCueMode && !isEditMode && nextCueCode === code} onAction={handleSoundAction} onFileUpload={handleFileUpload} onSettingChange={handleSettingChange} onDelete={requestDeleteSound} />
                 ))}
               </div>
             </div>
@@ -447,7 +592,7 @@ const SoundBoard = () => {
             </h2>
             <div className="grid grid-cols-3 gap-3 sm:gap-4 bg-[#222731] p-4 sm:p-6 rounded-xl shadow-inner border border-black/20 w-fit">
               {['Numpad7', 'Numpad8', 'Numpad9', 'Numpad4', 'Numpad5', 'Numpad6', 'Numpad1', 'Numpad2', 'Numpad3'].map(code => (
-                <KeycapButton key={code} sound={getSound(code)} isActive={activeKeys.has(code)} isEditMode={isEditMode} bgmUIState={bgmUIStates[code]} isCueTarget={isCueMode && !isEditMode && cueList[cueIndex + 1] === code} onAction={handleSoundAction} onFileUpload={handleFileUpload} onSettingChange={handleSettingChange} onDelete={requestDeleteSound} />
+                <KeycapButton key={code} sound={getSound(code)} isActive={activeKeys.has(code)} isEditMode={isEditMode} bgmUIState={bgmUIStates[code]} isCueTarget={isCueMode && !isEditMode && nextCueCode === code} onAction={handleSoundAction} onFileUpload={handleFileUpload} onSettingChange={handleSettingChange} onDelete={requestDeleteSound} />
               ))}
             </div>
           </div>
