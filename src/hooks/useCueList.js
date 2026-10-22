@@ -7,7 +7,7 @@ const makeCueId = () => `cue_${Date.now()}_${cueIdCounter++}`;
 export function normalizeCueItem(item) {
   if (!item) return null;
   if (typeof item === 'string') {
-    return { id: makeCueId(), type: 'sound', code: item, memo: '' };
+    return { id: makeCueId(), type: 'sound', source: 'keycap', code: item, memo: '' };
   }
   if (typeof item === 'object') {
     if (item.type === 'divider') {
@@ -18,10 +18,16 @@ export function normalizeCueItem(item) {
       };
     }
     if (item.code) {
+      const isLocal = item.source === 'local' || String(item.code).startsWith('local_');
       return {
         id: item.id || makeCueId(),
         type: 'sound',
+        source: isLocal ? 'local' : 'keycap',
         code: item.code,
+        soundLabel: item.soundLabel || '',
+        audioType: item.audioType || 'bgm',
+        loop: item.loop ?? false,
+        volume: item.volume ?? 1.0,
         memo: item.memo || '',
       };
     }
@@ -34,7 +40,7 @@ export function normalizeCueList(list) {
   return list.map(normalizeCueItem).filter(Boolean);
 }
 
-export function useCueList({ mappingsRef, playSfx, handleBGMPlayback, showToast }) {
+export function useCueList({ mappingsRef, playSfx, handleBGMPlayback, showToast, onRemoveLocalCodes }) {
   const [cueList, setCueListRaw] = useState(() => {
     const saved = localStorage.getItem(CUE_KEY);
     if (saved) {
@@ -139,7 +145,6 @@ export function useCueList({ mappingsRef, playSfx, handleBGMPlayback, showToast 
     const list = cueListRef.current;
     if (list.length === 0) return;
 
-    // 현재 대기 중인 인덱스 찾기
     let currentNext = list.length;
     for (let i = cueIndexRef.current + 1; i < list.length; i++) {
       if (list[i]?.type !== 'divider') {
@@ -173,8 +178,36 @@ export function useCueList({ mappingsRef, playSfx, handleBGMPlayback, showToast 
 
   const addCue = useCallback((code, memo = '') => {
     if (!code) return;
-    setCueListRaw(prev => [...prev, { id: makeCueId(), type: 'sound', code, memo }]);
+    setCueListRaw(prev => [
+      ...prev,
+      { id: makeCueId(), type: 'sound', source: 'keycap', code, memo },
+    ]);
     setCueAddSelection('');
+  }, []);
+
+  const addLocalCue = useCallback(({
+    code,
+    soundLabel,
+    audioType = 'bgm',
+    loop = false,
+    volume = 1.0,
+    memo = '',
+  }) => {
+    if (!code) return;
+    setCueListRaw(prev => [
+      ...prev,
+      {
+        id: makeCueId(),
+        type: 'sound',
+        source: 'local',
+        code,
+        soundLabel: soundLabel || '로컬 음원',
+        audioType,
+        loop,
+        volume,
+        memo,
+      },
+    ]);
   }, []);
 
   const addDivider = useCallback((title = '식순 구분') => {
@@ -185,10 +218,24 @@ export function useCueList({ mappingsRef, playSfx, handleBGMPlayback, showToast 
     setCueListRaw(prev => prev.map((item, i) => (i === idx ? { ...item, ...patch } : item)));
   }, []);
 
-  const removeCue = useCallback((idx) => {
-    setCueListRaw(prev => prev.filter((_, i) => i !== idx));
-    setCueIndex(prev => (idx <= prev ? Math.max(-1, prev - 1) : prev));
+  const updateLocalCueByCode = useCallback((code, patch) => {
+    setCueListRaw(prev =>
+      prev.map(item => (item.code === code ? { ...item, ...patch } : item))
+    );
   }, []);
+
+  const removeCue = useCallback((idx) => {
+    const current = cueListRef.current;
+    const removed = current[idx];
+    const nextList = current.filter((_, i) => i !== idx);
+    setCueListRaw(nextList);
+    setCueIndex(prev => (idx <= prev ? Math.max(-1, prev - 1) : prev));
+
+    if (removed?.source === 'local' && removed.code) {
+      const stillUsed = nextList.some(item => item.code === removed.code);
+      if (!stillUsed) onRemoveLocalCodes?.([removed.code]);
+    }
+  }, [onRemoveLocalCodes]);
 
   const moveCue = useCallback((idx, dir) => {
     setCueListRaw(prev => {
@@ -201,9 +248,17 @@ export function useCueList({ mappingsRef, playSfx, handleBGMPlayback, showToast 
   }, []);
 
   const clearCueList = useCallback(() => {
+    const localCodes = Array.from(
+      new Set(
+        cueListRef.current
+          .filter(item => item.source === 'local' && item.code)
+          .map(item => item.code)
+      )
+    );
     setCueListRaw([]);
     setCueIndex(-1);
-  }, []);
+    if (localCodes.length > 0) onRemoveLocalCodes?.(localCodes);
+  }, [onRemoveLocalCodes]);
 
   return {
     cueList,
@@ -222,8 +277,10 @@ export function useCueList({ mappingsRef, playSfx, handleBGMPlayback, showToast 
     stepNextCue,
     resetCue,
     addCue,
+    addLocalCue,
     addDivider,
     updateCueItem,
+    updateLocalCueByCode,
     removeCue,
     moveCue,
     clearCueList,

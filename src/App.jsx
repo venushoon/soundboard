@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { saveSoundFile, deleteSoundFile, loadAllSoundFiles } from './db.js';
 import { INITIAL_MAPPINGS, STORAGE_KEY, SFX_VOL_KEY, blobToBase64 } from './constants.js';
 import { useAudioEngine } from './hooks/useAudioEngine.js';
@@ -10,6 +10,8 @@ import { CueBuilderPanel, CueGoBar } from './components/CuePanel.jsx';
 import { ExportImportBar, EditGuideBar } from './components/EditPanels.jsx';
 import WindowPortal from './components/WindowPortal.jsx';
 import CuePlayerWindow from './components/CuePlayerWindow.jsx';
+
+let localFileSeq = 1;
 
 const SoundBoard = () => {
   const [mappings, setMappings] = useState(() => {
@@ -23,10 +25,13 @@ const SoundBoard = () => {
             ? { ...init, soundLabel: found.soundLabel, loop: found.loop ?? init.loop, volume: found.volume ?? init.volume }
             : init;
         });
-      } catch (e) { return INITIAL_MAPPINGS; }
+      } catch { return INITIAL_MAPPINGS; }
     }
     return INITIAL_MAPPINGS;
   });
+
+  // 큐 목록에 로컬/드라이브에서 직접 불러온 음원의 디코딩된 AudioBuffer 맵 (code -> AudioBuffer)
+  const [localBuffers, setLocalBuffers] = useState({});
 
   const [sfxVolume, setSfxVolume] = useState(() => {
     const saved = localStorage.getItem(SFX_VOL_KEY);
@@ -48,7 +53,6 @@ const SoundBoard = () => {
   const isEditModeRef = useRef(isEditMode);
   const sfxVolumeRef = useRef(sfxVolume);
 
-  useEffect(() => { mappingsRef.current = mappings; }, [mappings]);
   useEffect(() => { isEditModeRef.current = isEditMode; }, [isEditMode]);
   useEffect(() => { sfxVolumeRef.current = sfxVolume; }, [sfxVolume]);
 
@@ -61,16 +65,107 @@ const SoundBoard = () => {
   const {
     initAudioContext, bgmUIStates, sfxPlayingCodes, stopBGM, fadeOutBGM, seekBGM,
     handleBGMPlayback, toggleSfx, getPlaybackInfo, handlePanicStop: enginePanicStop,
+    applyLiveSetting,
   } = useAudioEngine({ mappingsRef, sfxVolumeRef });
+
+  const handleRemoveLocalCodes = useCallback((codes) => {
+    codes.forEach((code) => {
+      stopBGM(code);
+      deleteSoundFile(code).catch(() => {});
+    });
+    setLocalBuffers((prev) => {
+      const next = { ...prev };
+      codes.forEach(c => { delete next[c]; });
+      return next;
+    });
+  }, [stopBGM]);
 
   const {
     cueList, cueIndex, nextPlayableIndex, nextCueItem, nextCueCode,
     isCueMode, setIsCueMode,
     cueAddSelection, setCueAddSelection, isCueModeRef,
     triggerNextCue, playCueAtIndex, selectNextCue, stepNextCue,
-    resetCue, addCue, addDivider, updateCueItem,
+    resetCue, addCue, addLocalCue, addDivider, updateCueItem, updateLocalCueByCode,
     removeCue, moveCue, clearCueList, setCueList,
-  } = useCueList({ mappingsRef, playSfx: toggleSfx, handleBGMPlayback, showToast });
+  } = useCueList({
+    mappingsRef,
+    playSfx: toggleSfx,
+    handleBGMPlayback,
+    showToast,
+    onRemoveLocalCodes: handleRemoveLocalCodes,
+  });
+
+  // 자판 음원(mappings) + 큐에 직접 등록된 로컬 음원을 통합한 전체 사운드 목록
+  const allSounds = useMemo(() => {
+    const localItemsMap = new Map();
+    cueList.forEach((item) => {
+      if ((item.source === 'local' || String(item.code).startsWith('local_')) && item.code) {
+        if (!localItemsMap.has(item.code)) {
+          localItemsMap.set(item.code, {
+            code: item.code,
+            keyLabel: '📁 로컬',
+            soundLabel: item.soundLabel || '로컬 음원',
+            audioBuffer: localBuffers[item.code] || null,
+            color: 'bg-amber-600',
+            type: item.audioType || 'bgm',
+            isDecoding: false,
+            loop: item.loop ?? false,
+            volume: item.volume ?? 1.0,
+            isLocalCue: true,
+          });
+        }
+      }
+    });
+    return [...mappings, ...Array.from(localItemsMap.values())];
+  }, [mappings, cueList, localBuffers]);
+
+  useEffect(() => {
+    mappingsRef.current = allSounds;
+  }, [allSounds]);
+
+  // 로컬(드라이브)에서 오디오 파일(들)을 불러와 큐 목록에 바로 추가
+  const handleUploadLocalCueFiles = useCallback(async (files, options = {}) => {
+    const fileArray = Array.from(files || []);
+    if (fileArray.length === 0) return;
+
+    const ctx = initAudioContext();
+    if (!ctx) {
+      showToast('오디오 엔진을 초기화할 수 없습니다.', 'error');
+      return;
+    }
+
+    let addedCount = 0;
+    for (const file of fileArray) {
+      const localCode = `local_${Date.now()}_${localFileSeq++}`;
+      const defaultLabel = file.name.replace(/\.[^/.]+$/, '');
+      try {
+        const arrayBuffer = await file.arrayBuffer();
+        const audioBuffer = await ctx.decodeAudioData(arrayBuffer);
+        await saveSoundFile(localCode, file);
+        setLocalBuffers(prev => ({ ...prev, [localCode]: audioBuffer }));
+        addLocalCue({
+          code: localCode,
+          soundLabel: defaultLabel,
+          audioType: options.audioType || 'bgm',
+          loop: false,
+          volume: 1.0,
+          memo: options.memo || '',
+        });
+        addedCount += 1;
+      } catch {
+        showToast(`「${file.name}」 파일을 불러올 수 없습니다.`, 'error');
+      }
+    }
+
+    if (addedCount > 0) {
+      showToast(
+        addedCount === 1
+          ? '로컬 음원이 큐에 추가되었습니다'
+          : `${addedCount}개의 로컬 음원이 큐에 추가되었습니다`,
+        'success'
+      );
+    }
+  }, [initAudioContext, addLocalCue, showToast]);
 
   const openCuePopupWindow = useCallback(() => {
     initAudioContext();
@@ -82,7 +177,7 @@ const SoundBoard = () => {
     const win = window.open(
       '',
       'SoundboardCuePlayer',
-      'width=540,height=840,left=120,top=80,resizable=yes,scrollbars=yes'
+      'width=560,height=860,left=120,top=80,resizable=yes,scrollbars=yes'
     );
     if (win) {
       setCuePopupWin(win);
@@ -139,7 +234,11 @@ const SoundBoard = () => {
         for (const code of codes) {
           try {
             const audioBuffer = await ctx.decodeAudioData(await blobs[code].arrayBuffer());
-            setMappings(prev => prev.map(s => s.code === code ? { ...s, audioBuffer } : s));
+            if (code.startsWith('local_')) {
+              setLocalBuffers(prev => ({ ...prev, [code]: audioBuffer }));
+            } else {
+              setMappings(prev => prev.map(s => s.code === code ? { ...s, audioBuffer } : s));
+            }
           } catch (e) {
             console.warn(`파일 복원 실패 (${code}):`, e);
           }
@@ -267,7 +366,7 @@ const SoundBoard = () => {
       await saveSoundFile(code, file);
       setMappings(prev => prev.map(s => s.code === code ? { ...s, audioBuffer, soundLabel: defaultLabel, isDecoding: false } : s));
       showToast(`${defaultLabel} 등록 완료`, 'success');
-    } catch (error) {
+    } catch {
       showToast('지원하지 않는 파일이거나 손상되었습니다.', 'error');
       setMappings(prev => prev.map(s => s.code === code ? { ...s, isDecoding: false } : s));
     } finally {
@@ -293,7 +392,7 @@ const SoundBoard = () => {
     try {
       showToast('내보내기 준비 중...', 'success');
       const fileBlobs = await loadAllSoundFiles();
-      const soundsExport = await Promise.all(mappingsRef.current.map(async (s) => {
+      const soundsExport = await Promise.all(mappings.map(async (s) => {
         let fileData = null, fileType = null;
         if (fileBlobs[s.code]) {
           fileData = await blobToBase64(fileBlobs[s.code]);
@@ -302,11 +401,23 @@ const SoundBoard = () => {
         return { code: s.code, soundLabel: s.soundLabel, loop: s.loop, volume: s.volume, fileData, fileType };
       }));
 
+      // 로컬 큐 음원 파일들도 함께 백업
+      const localCodes = Array.from(
+        new Set(cueList.filter(i => i.source === 'local' || String(i.code).startsWith('local_')).map(i => i.code))
+      );
+      const localCueFiles = {};
+      for (const code of localCodes) {
+        if (fileBlobs[code]) {
+          localCueFiles[code] = await blobToBase64(fileBlobs[code]);
+        }
+      }
+
       const payload = {
-        version: 2,
+        version: 3,
         exportedAt: new Date().toISOString(),
         sfxVolume: sfxVolumeRef.current,
         cueList,
+        localCueFiles,
         sounds: soundsExport,
       };
 
@@ -324,7 +435,7 @@ const SoundBoard = () => {
       console.error(e);
       showToast('내보내기에 실패했습니다', 'error');
     }
-  }, [showToast, cueList]);
+  }, [showToast, mappings, cueList]);
 
   const handleImportFileSelected = useCallback((event) => {
     const file = event.target.files[0];
@@ -376,6 +487,22 @@ const SoundBoard = () => {
         } : m));
       }
 
+      if (payload.localCueFiles && typeof payload.localCueFiles === 'object') {
+        const restoredLocal = {};
+        for (const [code, base64Data] of Object.entries(payload.localCueFiles)) {
+          if (!base64Data) continue;
+          try {
+            const resp = await fetch(base64Data);
+            const blob = await resp.blob();
+            await saveSoundFile(code, blob);
+            restoredLocal[code] = await ctx.decodeAudioData(await blob.arrayBuffer());
+          } catch (e) {
+            console.warn(`로컬 큐 음원 복원 실패 (${code}):`, e);
+          }
+        }
+        setLocalBuffers(prev => ({ ...prev, ...restoredLocal }));
+      }
+
       if (Array.isArray(payload.cueList)) setCueList(payload.cueList);
       if (typeof payload.sfxVolume === 'number') setSfxVolume(payload.sfxVolume);
 
@@ -387,10 +514,15 @@ const SoundBoard = () => {
   }, [pendingImportFile, initAudioContext, showToast, setCueList]);
 
   const handleSettingChange = useCallback((code, setting, value) => {
-    setMappings(prev => prev.map(s => s.code === code ? { ...s, [setting]: value } : s));
-  }, []);
+    applyLiveSetting(code, setting, value);
+    if (String(code).startsWith('local_')) {
+      updateLocalCueByCode(code, { [setting]: value });
+    } else {
+      setMappings(prev => prev.map(s => s.code === code ? { ...s, [setting]: value } : s));
+    }
+  }, [applyLiveSetting, updateLocalCueByCode]);
 
-  const getSound = (code) => mappings.find(s => s.code === code);
+  const getSound = useCallback((code) => allSounds.find(s => s.code === code), [allSounds]);
   const isPopupOpen = !!(cuePopupWin && !cuePopupWin.closed);
 
   return (
@@ -416,6 +548,7 @@ const SoundBoard = () => {
             seekBGM={seekBGM}
             handleSoundAction={handleSoundAction}
             handleSettingChange={handleSettingChange}
+            onUploadLocalCueFiles={handleUploadLocalCueFiles}
             sfxVolume={sfxVolume}
             setSfxVolume={setSfxVolume}
             handlePanicStop={handlePanicStop}
@@ -542,6 +675,7 @@ const SoundBoard = () => {
             clearCueList={clearCueList}
             getSound={getSound}
             onOpenCueWindow={openCuePopupWindow}
+            onUploadLocalCueFiles={handleUploadLocalCueFiles}
           />
         )}
 

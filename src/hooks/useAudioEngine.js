@@ -220,6 +220,22 @@ export function useAudioEngine({ mappingsRef, sfxVolumeRef }) {
     };
   }, []);
 
+  const applyLiveSetting = useCallback((code, setting, value) => {
+    const nodeData = activeNodesRef.current.get(code);
+    if (nodeData) {
+      if (setting === 'volume' && nodeData.gainNode && nodeData.state !== 'fading') {
+        nodeData.gainNode.gain.value = value;
+      }
+      if (setting === 'loop' && nodeData.source) {
+        nodeData.source.loop = value;
+      }
+    }
+    const sfxData = sfxNodesRef.current.get(code);
+    if (sfxData && setting === 'volume' && sfxData.gainNode) {
+      sfxData.gainNode.gain.value = sfxVolumeRef.current * value;
+    }
+  }, [sfxVolumeRef]);
+
   return {
     initAudioContext,
     bgmUIStates,
@@ -231,5 +247,6 @@ export function useAudioEngine({ mappingsRef, sfxVolumeRef }) {
     toggleSfx,
     getPlaybackInfo,
     handlePanicStop,
+    applyLiveSetting,
   };
 }

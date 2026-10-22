@@ -1,13 +1,25 @@
+import { useRef } from 'react';
+
 export function CueBuilderPanel({
   cueList, mappings, cueAddSelection, setCueAddSelection,
-  addCue, addDivider, moveCue, removeCue, clearCueList, getSound, onOpenCueWindow,
+  addCue, addDivider, moveCue, removeCue, clearCueList, getSound,
+  onOpenCueWindow, onUploadLocalCueFiles,
 }) {
+  const localFileInputRef = useRef(null);
+
+  const handleLocalFiles = async (e) => {
+    const files = Array.from(e.target.files || []);
+    if (files.length === 0) return;
+    await onUploadLocalCueFiles?.(files, { audioType: 'bgm', memo: '' });
+    e.target.value = null;
+  };
+
   return (
     <div className="w-full max-w-5xl bg-purple-900/20 border border-purple-500/30 rounded-lg p-4 mb-4 text-purple-200 shadow-inner">
       <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
         <h3 className="font-bold text-purple-300 flex items-center gap-1.5 text-sm">
           <span className="text-base">🎬</span> 큐 시퀀스 구성
-          <span className="text-[10px] font-normal text-purple-400/80">(큐 모드 독립 창에서도 실시간 편집 가능)</span>
+          <span className="text-[10px] font-normal text-purple-400/80">(자판 음원 선택 또는 로컬/드라이브 파일 직접 추가)</span>
         </h3>
         {onOpenCueWindow && (
           <button
@@ -22,7 +34,7 @@ export function CueBuilderPanel({
 
       <div className="flex flex-wrap gap-2 mb-3">
         {cueList.length === 0 && (
-          <span className="text-xs text-purple-400/70">등록된 큐가 없습니다. 아래에서 사운드를 골라 추가하세요.</span>
+          <span className="text-xs text-purple-400/70">등록된 큐가 없습니다. 아래에서 자판 음원을 고르거나 로컬 파일을 불러오세요.</span>
         )}
         {cueList.map((item, idx) => {
           if (item.type === 'divider') {
@@ -40,13 +52,15 @@ export function CueBuilderPanel({
           }
 
           const s = getSound(item.code);
+          const isLocal = item.source === 'local' || String(item.code).startsWith('local_');
           return (
             <div
               key={item.id || `${item.code}-${idx}`}
               className="flex items-center gap-1 bg-slate-800 border border-purple-500/40 rounded-full pl-3 pr-1.5 py-1 text-xs"
             >
               <span className="text-purple-300 font-bold">{idx + 1}</span>
-              <span className="max-w-[110px] truncate">{s ? s.soundLabel : item.code}</span>
+              {isLocal && <span className="text-[10px] text-amber-300">📁</span>}
+              <span className="max-w-[120px] truncate">{s ? s.soundLabel : (item.soundLabel || item.code)}</span>
               {item.memo && <span className="text-[10px] text-amber-300 max-w-[80px] truncate">({item.memo})</span>}
               <button onClick={() => moveCue(idx, -1)} disabled={idx === 0} aria-label="위로 이동" className="w-5 h-5 rounded hover:bg-slate-700 disabled:opacity-30 text-slate-300">↑</button>
               <button onClick={() => moveCue(idx, 1)} disabled={idx === cueList.length - 1} aria-label="아래로 이동" className="w-5 h-5 rounded hover:bg-slate-700 disabled:opacity-30 text-slate-300">↓</button>
@@ -62,7 +76,7 @@ export function CueBuilderPanel({
           onChange={(e) => setCueAddSelection(e.target.value)}
           className="bg-slate-700 text-slate-200 text-xs rounded px-2 py-1.5 border border-slate-600 outline-none max-w-[220px]"
         >
-          <option value="">사운드 선택...</option>
+          <option value="">⌨️ 자판 음원 선택...</option>
           {mappings.filter(s => s.audioBuffer).map(s => (
             <option key={s.code} value={s.code}>{s.keyLabel} — {s.soundLabel}</option>
           ))}
@@ -72,8 +86,29 @@ export function CueBuilderPanel({
           disabled={!cueAddSelection}
           className="bg-purple-600 hover:bg-purple-500 disabled:opacity-40 text-white text-xs font-medium px-3 py-1.5 rounded transition-colors"
         >
-          + 큐에 추가
+          + 자판 큐 추가
         </button>
+
+        {onUploadLocalCueFiles && (
+          <>
+            <button
+              type="button"
+              onClick={() => localFileInputRef.current?.click()}
+              className="bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-medium px-3 py-1.5 rounded transition-colors flex items-center gap-1"
+            >
+              📁 로컬 파일 불러오기
+            </button>
+            <input
+              ref={localFileInputRef}
+              type="file"
+              accept="audio/*"
+              multiple
+              className="hidden"
+              onChange={handleLocalFiles}
+            />
+          </>
+        )}
+
         {addDivider && (
           <button
             onClick={() => addDivider('식순 구분')}
@@ -113,7 +148,7 @@ export function CueGoBar({
           {lastItem && (
             <div className="text-[10px] text-emerald-400 mb-0.5 font-medium flex items-center gap-1">
               <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-              방금 재생됨 · {cueIndex + 1}번 「{getSound(lastItem.code)?.soundLabel || lastItem.code}」
+              방금 재생됨 · {cueIndex + 1}번 「{getSound(lastItem.code)?.soundLabel || lastItem.soundLabel || lastItem.code}」
             </div>
           )}
           <div className="text-[10px] text-purple-400 mb-1 font-medium flex items-center gap-2">
@@ -135,7 +170,7 @@ export function CueGoBar({
               {cueList.length === 0
                 ? '큐플레이어 창에서 식순을 추가하세요'
                 : nextCueItem
-                ? (nextSound?.soundLabel || '알 수 없음')
+                ? (nextSound?.soundLabel || nextCueItem.soundLabel || '알 수 없음')
                 : '🏁 마지막 큐입니다'}
             </span>
             {nextCueItem?.memo && (
@@ -185,7 +220,7 @@ export function CueGoBar({
             return (
               <div
                 key={item.id || idx}
-                title={getSound(item.code)?.soundLabel || item.code}
+                title={getSound(item.code)?.soundLabel || item.soundLabel || item.code}
                 className={`w-3 h-3 rounded-sm transition-colors ${
                   idx <= cueIndex
                     ? 'bg-slate-600'
