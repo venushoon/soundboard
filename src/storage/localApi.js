@@ -114,6 +114,7 @@ async function addSound({ blob, categoryName, type, name, isExample = false }) {
     isExample, createdAt: new Date().toISOString(),
     loudnessLufs: null, truePeakDb: null, loudnessMethod: null, durationSec: null,
     normalize: true, trimDb: 0, gainDb: 0,
+    fadeInSec: 0, fadeOutSec: 0, startSec: 0, endSec: null,
   };
   await idbPut(sound.id, blob);
   await analyzeAndFill(sound, blob);
@@ -300,6 +301,12 @@ export const localApi = {
     if (patch.categoryId && m.categories.some((c) => c.id === patch.categoryId)) sound.categoryId = patch.categoryId;
     if (typeof patch.normalize === 'boolean') sound.normalize = patch.normalize;
     if (patch.trimDb !== undefined) sound.trimDb = clampTrimDb(patch.trimDb);
+    const clampSec = (v, max) => Math.round(Math.max(0, Math.min(max, Number(v))) * 10) / 10;
+    if (typeof patch.fadeInSec === 'number' && Number.isFinite(patch.fadeInSec)) sound.fadeInSec = clampSec(patch.fadeInSec, 30);
+    if (typeof patch.fadeOutSec === 'number' && Number.isFinite(patch.fadeOutSec)) sound.fadeOutSec = clampSec(patch.fadeOutSec, 30);
+    if (typeof patch.startSec === 'number' && Number.isFinite(patch.startSec)) sound.startSec = clampSec(patch.startSec, 3600);
+    if (patch.endSec === null) sound.endSec = null;
+    else if (typeof patch.endSec === 'number' && Number.isFinite(patch.endSec)) sound.endSec = clampSec(patch.endSec, 3600);
     sound.gainDb = computeGainDb(sound);
     persist();
     return structuredClone(sound);

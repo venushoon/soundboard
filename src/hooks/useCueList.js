@@ -4,10 +4,20 @@ import { CUE_KEY } from '../constants.js';
 let cueIdCounter = 1;
 const makeCueId = () => `cue_${Date.now()}_${cueIdCounter++}`;
 
+const normContinueMode = (v) => (v === 'follow' || v === 'continue' ? v : 'manual');
+const clampPreWait = (v) => {
+  const n = Number(v);
+  return Number.isFinite(n) ? Math.min(600, Math.max(0, n)) : 0;
+};
+const clampFadeSeconds = (v) => {
+  const n = Number(v);
+  return Number.isFinite(n) ? Math.min(60, Math.max(0.1, n)) : 3;
+};
+
 export function normalizeCueItem(item) {
   if (!item) return null;
   if (typeof item === 'string') {
-    return { id: makeCueId(), type: 'sound', source: 'keycap', code: item, memo: '' };
+    return { id: makeCueId(), type: 'sound', source: 'keycap', code: item, memo: '', continueMode: 'manual', preWaitSec: 0 };
   }
   if (typeof item === 'object') {
     if (item.type === 'divider') {
@@ -15,6 +25,17 @@ export function normalizeCueItem(item) {
         id: item.id || makeCueId(),
         type: 'divider',
         title: item.title || '구분선',
+      };
+    }
+    if (item.type === 'fade') {
+      return {
+        id: item.id || makeCueId(),
+        type: 'fade',
+        target: item.target === 'all' ? 'all' : 'bgm',
+        seconds: clampFadeSeconds(item.seconds),
+        memo: item.memo || '',
+        continueMode: normContinueMode(item.continueMode),
+        preWaitSec: clampPreWait(item.preWaitSec),
       };
     }
     if (item.code) {
@@ -30,6 +51,8 @@ export function normalizeCueItem(item) {
         volume: item.volume ?? 1.0,
         memo: item.memo || '',
         soundId: item.soundId || null,
+        continueMode: normContinueMode(item.continueMode),
+        preWaitSec: clampPreWait(item.preWaitSec),
       };
     }
   }
@@ -41,7 +64,7 @@ export function normalizeCueList(list) {
   return list.map(normalizeCueItem).filter(Boolean);
 }
 
-export function useCueList({ mappingsRef, playSfx, handleBGMPlayback, showToast, onRemoveLocalCodes }) {
+export function useCueList({ mappingsRef, playSfx, handleBGMPlayback, fadeOutBGM, fadeOutSfx, getActiveBgmCodes, getPlayingSfxCodes, showToast, onRemoveLocalCodes }) {
   const [cueList, setCueListRaw] = useState(() => {
     const saved = localStorage.getItem(CUE_KEY);
     if (saved) {
@@ -90,26 +113,81 @@ export function useCueList({ mappingsRef, playSfx, handleBGMPlayback, showToast,
   const nextCueItem = nextPlayableIndex >= 0 ? cueList[nextPlayableIndex] : null;
   const nextCueCode = nextCueItem?.code || null;
 
-  // 특정 인덱스의 큐를 즉시 실행
+  // 자동 진행(프리웨이트·오토 팔로우) 타이머: itemId -> timeoutId[]
+  const timersRef = useRef(new Map());
+  const addItemTimer = useCallback((id, tid) => {
+    const arr = timersRef.current.get(id) || [];
+    arr.push(tid);
+    timersRef.current.set(id, arr);
+  }, []);
+  const clearItemTimers = useCallback((id) => {
+    const arr = timersRef.current.get(id);
+    if (arr) arr.forEach(clearTimeout);
+    timersRef.current.delete(id);
+  }, []);
+  const cancelCueTimers = useCallback(() => {
+    timersRef.current.forEach(arr => arr.forEach(clearTimeout));
+    timersRef.current.clear();
+  }, []);
+
+  const playCueAtIndexRef = useRef(() => {});
+
+  // 큐 1건을 실제로 실행하고, 그 큐가 울리는 시간(초)을 돌려준다.
+  // 루프 BGM처럼 끝을 알 수 없으면 Infinity, 음원이 없으면 0.
+  const executeCueItem = useCallback((item) => {
+    if (item.type === 'fade') {
+      (getActiveBgmCodes?.() || []).forEach(code => fadeOutBGM?.(code, item.seconds));
+      if (item.target === 'all') {
+        (getPlayingSfxCodes?.() || []).forEach(code => fadeOutSfx?.(code, item.seconds));
+      }
+      return item.seconds || 0;
+    }
+    const soundObj = mappingsRef.current.find(s => s.code === item.code);
+    if (!soundObj || !soundObj.audioBuffer) {
+      showToast('등록되지 않은 음원입니다. 다음 큐로 건너뜁니다.', 'error');
+      return 0;
+    }
+    if (soundObj.type === 'sfx') playSfx(soundObj);
+    else handleBGMPlayback(soundObj, 'play');
+    const bufDur = soundObj.audioBuffer.duration;
+    const segEnd = typeof soundObj.endSec === 'number' ? Math.min(soundObj.endSec, bufDur) : bufDur;
+    const segDur = Math.max(0, segEnd - (soundObj.startSec || 0));
+    return soundObj.loop ? Infinity : segDur;
+  }, [mappingsRef, playSfx, handleBGMPlayback, fadeOutBGM, fadeOutSfx, getActiveBgmCodes, getPlayingSfxCodes, showToast]);
+
+  // 특정 인덱스의 큐를 실행한다. 프리웨이트가 있으면 그만큼 늦게 울리고,
+  // 진행 방식(continueMode)에 따라 다음 큐를 자동으로 이어 붙인다.
   const playCueAtIndex = useCallback((targetIndex) => {
     const list = cueListRef.current;
     const item = list[targetIndex];
     if (!item || item.type === 'divider') return;
 
-    const soundObj = mappingsRef.current.find(s => s.code === item.code);
-    if (!soundObj || !soundObj.audioBuffer) {
-      showToast('등록되지 않은 음원입니다. 다음 큐로 건너뜁니다.', 'error');
-      setCueIndex(targetIndex);
-      return;
-    }
-
-    if (soundObj.type === 'sfx') {
-      playSfx(soundObj);
-    } else {
-      handleBGMPlayback(soundObj, 'play');
-    }
     setCueIndex(targetIndex);
-  }, [mappingsRef, playSfx, handleBGMPlayback, showToast]);
+    clearItemTimers(item.id);
+
+    const fire = () => {
+      const durSec = executeCueItem(item);
+      if (item.continueMode !== 'follow' && item.continueMode !== 'continue') return;
+      let nextIdx = -1;
+      for (let i = targetIndex + 1; i < list.length; i++) {
+        if (list[i]?.type !== 'divider') { nextIdx = i; break; }
+      }
+      if (nextIdx < 0) return;
+      if (item.continueMode === 'continue') {
+        // 이 큐가 시작되자마자 다음 큐도 시작 (다음 큐의 프리웨이트는 그대로 적용)
+        playCueAtIndexRef.current(nextIdx);
+      } else if (Number.isFinite(durSec)) {
+        // follow: 이 큐가 끝나는 시점에 다음 큐 실행 (루프처럼 끝을 알 수 없으면 연결 안 함)
+        addItemTimer(item.id, setTimeout(() => playCueAtIndexRef.current(nextIdx), durSec * 1000));
+      }
+    };
+
+    const pre = item.preWaitSec || 0;
+    if (pre > 0) addItemTimer(item.id, setTimeout(fire, pre * 1000));
+    else fire();
+  }, [executeCueItem, addItemTimer, clearItemTimers]);
+
+  useEffect(() => { playCueAtIndexRef.current = playCueAtIndex; }, [playCueAtIndex]);
 
   const triggerNextCue = useCallback(() => {
     const list = cueListRef.current;
@@ -173,17 +251,25 @@ export function useCueList({ mappingsRef, playSfx, handleBGMPlayback, showToast,
   }, []);
 
   const resetCue = useCallback(() => {
+    cancelCueTimers();
     setCueIndex(-1);
     showToast('큐가 처음으로 이동했습니다', 'success');
-  }, [showToast]);
+  }, [showToast, cancelCueTimers]);
 
   const addCue = useCallback((code, memo = '') => {
     if (!code) return;
     setCueListRaw(prev => [
       ...prev,
-      { id: makeCueId(), type: 'sound', source: 'keycap', code, memo },
+      { id: makeCueId(), type: 'sound', source: 'keycap', code, memo, continueMode: 'manual', preWaitSec: 0 },
     ]);
     setCueAddSelection('');
+  }, []);
+
+  const addFadeCue = useCallback(() => {
+    setCueListRaw(prev => [
+      ...prev,
+      { id: makeCueId(), type: 'fade', target: 'bgm', seconds: 3, memo: '', continueMode: 'manual', preWaitSec: 0 },
+    ]);
   }, []);
 
   const addLocalCue = useCallback(({
@@ -209,6 +295,8 @@ export function useCueList({ mappingsRef, playSfx, handleBGMPlayback, showToast,
         volume,
         memo,
         soundId,
+        continueMode: 'manual',
+        preWaitSec: 0,
       },
     ]);
   }, []);
@@ -230,6 +318,7 @@ export function useCueList({ mappingsRef, playSfx, handleBGMPlayback, showToast,
   const removeCue = useCallback((idx) => {
     const current = cueListRef.current;
     const removed = current[idx];
+    if (removed) clearItemTimers(removed.id);
     const nextList = current.filter((_, i) => i !== idx);
     setCueListRaw(nextList);
     setCueIndex(prev => (idx <= prev ? Math.max(-1, prev - 1) : prev));
@@ -238,7 +327,7 @@ export function useCueList({ mappingsRef, playSfx, handleBGMPlayback, showToast,
       const stillUsed = nextList.some(item => item.code === removed.code);
       if (!stillUsed) onRemoveLocalCodes?.([removed.code]);
     }
-  }, [onRemoveLocalCodes]);
+  }, [onRemoveLocalCodes, clearItemTimers]);
 
   const moveCue = useCallback((idx, dir) => {
     setCueListRaw(prev => {
@@ -258,10 +347,11 @@ export function useCueList({ mappingsRef, playSfx, handleBGMPlayback, showToast,
           .map(item => item.code)
       )
     );
+    cancelCueTimers();
     setCueListRaw([]);
     setCueIndex(-1);
     if (localCodes.length > 0) onRemoveLocalCodes?.(localCodes);
-  }, [onRemoveLocalCodes]);
+  }, [onRemoveLocalCodes, cancelCueTimers]);
 
   return {
     cueList,
@@ -282,6 +372,8 @@ export function useCueList({ mappingsRef, playSfx, handleBGMPlayback, showToast,
     addCue,
     addLocalCue,
     addDivider,
+    addFadeCue,
+    cancelCueTimers,
     updateCueItem,
     updateLocalCueByCode,
     removeCue,

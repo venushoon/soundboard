@@ -87,7 +87,7 @@ function seedIfEmpty() {
       id, categoryId: cat.id, name: item.name, fileName,
       type: item.type || 'sfx', size: fs.statSync(src).size,
       isExample: true, createdAt: new Date().toISOString(),
-      normalize: true, trimDb: 0, gainDb: 0,
+      normalize: true, trimDb: 0, gainDb: 0, fadeInSec: 0, fadeOutSec: 0, startSec: 0, endSec: null,
     });
     if (item.boardCode) boardByCode[item.boardCode] = { soundId: id, label: item.boardLabel || null };
   }
@@ -138,6 +138,11 @@ const publicSound = (s) => ({
   normalize: s.normalize !== false,
   trimDb: typeof s.trimDb === 'number' ? s.trimDb : 0,
   gainDb: typeof s.gainDb === 'number' ? s.gainDb : 0,
+  // 재생 구간·페이드 (사운드별): 초 단위, endSec null = 끝까지
+  fadeInSec: typeof s.fadeInSec === 'number' ? s.fadeInSec : 0,
+  fadeOutSec: typeof s.fadeOutSec === 'number' ? s.fadeOutSec : 0,
+  startSec: typeof s.startSec === 'number' ? s.startSec : 0,
+  endSec: typeof s.endSec === 'number' ? s.endSec : null,
 });
 
 // 사운드 파일을 분석해 측정값과 적용 게인을 레코드에 채운다. 실패해도 앱은 계속 동작한다.
@@ -248,7 +253,7 @@ app.post('/api/sounds/upload', upload.single('file'), async (req, res) => {
     id, categoryId: cat.id, name: displayName, fileName,
     type: req.body?.type === 'bgm' ? 'bgm' : 'sfx',
     size: req.file.size, isExample: false, createdAt: new Date().toISOString(),
-    normalize: true, trimDb: 0, gainDb: 0,
+    normalize: true, trimDb: 0, gainDb: 0, fadeInSec: 0, fadeOutSec: 0, startSec: 0, endSec: null,
   };
   db.sounds.push(sound);
   await analyzeInto(sound); // 업로드 즉시 음량 분석 → 기준 음량 보정값 계산
@@ -283,6 +288,13 @@ app.patch('/api/sounds/:id', (req, res) => {
   if (typeof req.body?.normalize === 'boolean') s.normalize = req.body.normalize;
   if (typeof req.body?.trimDb === 'number' && Number.isFinite(req.body.trimDb)) s.trimDb = clampTrimDb(req.body.trimDb);
   if (typeof req.body?.normalize === 'boolean' || typeof req.body?.trimDb === 'number') s.gainDb = computeGainDb(s);
+  // 재생 구간·페이드: 페이드 0~30초, 시작 0~3600초, 종료는 null(끝까지) 허용
+  const clampSec = (v, max) => Math.round(Math.max(0, Math.min(max, Number(v))) * 10) / 10;
+  if (typeof req.body?.fadeInSec === 'number' && Number.isFinite(req.body.fadeInSec)) s.fadeInSec = clampSec(req.body.fadeInSec, 30);
+  if (typeof req.body?.fadeOutSec === 'number' && Number.isFinite(req.body.fadeOutSec)) s.fadeOutSec = clampSec(req.body.fadeOutSec, 30);
+  if (typeof req.body?.startSec === 'number' && Number.isFinite(req.body.startSec)) s.startSec = clampSec(req.body.startSec, 3600);
+  if (req.body?.endSec === null) s.endSec = null;
+  else if (typeof req.body?.endSec === 'number' && Number.isFinite(req.body.endSec)) s.endSec = clampSec(req.body.endSec, 3600);
   if (req.body?.categoryId && req.body.categoryId !== s.categoryId) {
     const cat = db.categories.find(c => c.id === req.body.categoryId);
     if (!cat) return res.status(400).json({ error: '대상 폴더 없음' });
@@ -322,6 +334,7 @@ app.put('/api/board', (req, res) => {
     code: String(a.code), soundId: a.soundId || null,
     soundLabel: typeof a.soundLabel === 'string' ? a.soundLabel : '',
     loop: !!a.loop, volume: typeof a.volume === 'number' ? a.volume : 1.0,
+    color: /^bg-[a-z]+-\d{3}$/.test(a.color || '') ? a.color : null,
   }));
   if (Array.isArray(mappings)) db.board.mappings = cleanAssign(mappings);
   if (typeof sfxVolume === 'number') db.board.sfxVolume = sfxVolume;

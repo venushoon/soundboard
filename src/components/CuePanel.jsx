@@ -19,7 +19,7 @@ export function CueGoBar({
           {lastItem && (
             <div className="text-[10px] text-emerald-400 mb-0.5 font-medium flex items-center gap-1">
               <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-              방금 재생됨 · {cueIndex + 1}번 「{getSound(lastItem.code)?.soundLabel || lastItem.soundLabel || lastItem.code}」
+              방금 재생됨 · {cueIndex + 1}번 「{lastItem.type === 'fade' ? `🌗 페이드 아웃 ${lastItem.seconds}초` : (getSound(lastItem.code)?.soundLabel || lastItem.soundLabel || lastItem.code)}」
             </div>
           )}
           <div className="text-[10px] text-purple-400 mb-1 font-medium flex items-center gap-2">
@@ -41,7 +41,9 @@ export function CueGoBar({
               {cueList.length === 0
                 ? '큐플레이어 창에서 식순을 추가하세요'
                 : nextCueItem
-                ? (nextSound?.soundLabel || nextCueItem.soundLabel || '알 수 없음')
+                ? (nextCueItem.type === 'fade'
+                    ? `🌗 페이드 아웃 (${nextCueItem.target === 'all' ? '전체 소리' : 'BGM'} · ${nextCueItem.seconds}초)`
+                    : (nextSound?.soundLabel || nextCueItem.soundLabel || '알 수 없음'))
                 : '🏁 마지막 큐입니다'}
             </span>
             {nextCueItem?.memo && (
@@ -85,6 +87,21 @@ export function CueGoBar({
                   key={item.id || idx}
                   title={`[구분] ${item.title}`}
                   className="w-1.5 h-3 bg-amber-400/70 rounded-full mx-0.5"
+                />
+              );
+            }
+            if (item.type === 'fade') {
+              return (
+                <div
+                  key={item.id || idx}
+                  title={`[페이드] ${item.target === 'all' ? '전체 소리' : 'BGM'} ${item.seconds}초`}
+                  className={`w-3 h-3 rounded-full transition-colors ${
+                    idx <= cueIndex
+                      ? 'bg-slate-600'
+                      : idx === nextPlayableIndex
+                      ? 'bg-green-400 shadow-[0_0_6px_rgba(74,222,128,0.8)]'
+                      : 'bg-sky-500/50 border border-sky-400/60'
+                  }`}
                 />
               );
             }

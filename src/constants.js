@@ -40,6 +40,21 @@ export const SFX_CODES = [
 ];
 export const SFX_BANKS = ['A', 'B'];
 
+// 키별 색상 팔레트 (편집 모드에서 선택). cls는 키 배경에 그대로 쓰이는 Tailwind 클래스.
+export const KEY_COLORS = [
+  { cls: 'bg-green-500', label: '초록' },
+  { cls: 'bg-red-500', label: '빨강' },
+  { cls: 'bg-blue-500', label: '파랑' },
+  { cls: 'bg-emerald-500', label: '에메랄드' },
+  { cls: 'bg-cyan-500', label: '하늘' },
+  { cls: 'bg-orange-500', label: '주황' },
+  { cls: 'bg-amber-500', label: '호박' },
+  { cls: 'bg-yellow-500', label: '노랑' },
+  { cls: 'bg-purple-500', label: '보라' },
+  { cls: 'bg-pink-500', label: '분홍' },
+  { cls: 'bg-slate-500', label: '회색' },
+];
+
 // 서버가 계산한 사운드별 음량 보정값(dB)을 재생 게인(선형)으로 변환
 export const dbToGain = (db) => Math.pow(10, (typeof db === 'number' && Number.isFinite(db) ? db : 0) / 20);
 export const soundGainOf = (obj) => dbToGain(obj?.soundGainDb);

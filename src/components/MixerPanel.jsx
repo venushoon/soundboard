@@ -1,4 +1,4 @@
-import React, { useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 
 // 하단 볼륨 믹서: 자판에 배치된 효과음(현재 뱅크)·BGM을 실제 믹서처럼
 // 세로 페이더 채널 스트립으로 보여준다. 페이더 범위는 0~200%이고
@@ -58,7 +58,27 @@ function Fader({ value, fillClass, label, onChange }) {
 
 const ctrlBtn = 'mixer-btn w-8 h-8 rounded flex items-center justify-center text-[13px] bg-slate-700 hover:bg-slate-600 disabled:opacity-30 disabled:hover:bg-slate-700 transition-colors';
 
-function ChannelStrip({ ch, kind, state, onVolumeChange, onBgmToggle, onBgmStop, onSfxTrigger, onSfxStop }) {
+// 채널 출력 레벨 미터: 엔진 애널라이저(RMS)를 MixerGroups가 rAF로 읽어 내려준다
+function LevelMeter({ level, label }) {
+  const pct = Math.round(Math.min(1, Math.max(0, level || 0)) * 100);
+  return (
+    <div
+      className="relative w-1.5 self-stretch rounded-full bg-slate-800 overflow-hidden shrink-0"
+      role="meter" aria-label={`${label} 출력 레벨`} aria-valuemin={0} aria-valuemax={100} aria-valuenow={pct}
+      title="출력 레벨"
+    >
+      <div
+        className="absolute bottom-0 left-0 right-0"
+        style={{
+          height: `${pct}%`,
+          background: 'linear-gradient(to top, #34d399 0%, #34d399 55%, #fbbf24 78%, #f87171 96%)',
+        }}
+      />
+    </div>
+  );
+}
+
+function ChannelStrip({ ch, kind, state, level, onVolumeChange, onBgmToggle, onBgmStop, onSfxTrigger, onSfxStop }) {
   const vol = ch.volume ?? 1;
   const pct = Math.round(vol * 100);
   const isPlaying = kind === 'bgm' ? state === 'playing' : !!state;
@@ -73,12 +93,15 @@ function ChannelStrip({ ch, kind, state, onVolumeChange, onBgmToggle, onBgmStop,
         <span className={`w-2 h-2 rounded-full ${isPlaying ? (kind === 'bgm' ? 'bg-blue-400' : 'bg-emerald-400') + ' animate-pulse' : 'bg-slate-600'}`} aria-hidden="true" />
       </div>
 
-      <Fader
-        value={vol}
-        fillClass={kind === 'bgm' ? 'bg-blue-500' : 'bg-emerald-500'}
-        label={`${ch.soundLabel} 볼륨`}
-        onChange={(v) => onVolumeChange(ch.code, v)}
-      />
+      <div className="flex items-stretch gap-1">
+        <LevelMeter level={level} label={ch.soundLabel} />
+        <Fader
+          value={vol}
+          fillClass={kind === 'bgm' ? 'bg-blue-500' : 'bg-emerald-500'}
+          label={`${ch.soundLabel} 볼륨`}
+          onChange={(v) => onVolumeChange(ch.code, v)}
+        />
+      </div>
 
       <button type="button" onClick={() => onVolumeChange(ch.code, 1)}
         title="100%로 초기화"
@@ -117,7 +140,31 @@ function ChannelStrip({ ch, kind, state, onVolumeChange, onBgmToggle, onBgmStop,
 }
 
 // 채널 그룹(효과음/BGM) — 인라인 패널과 팝업 창이 공유한다
-export function MixerGroups({ sfxChannels, bgmChannels, sfxBank, sfxPlayingCodes, bgmUIStates, onVolumeChange, onBgmToggle, onBgmStop, onSfxTrigger, onSfxStop }) {
+export function MixerGroups({ sfxChannels, bgmChannels, sfxBank, sfxPlayingCodes, bgmUIStates, getLevel, onVolumeChange, onBgmToggle, onBgmStop, onSfxTrigger, onSfxStop }) {
+  // 채널별 출력 레벨을 rAF로 읽어 미터에 반영 (값이 실제로 변할 때만 다시 그림)
+  const [levels, setLevels] = useState({});
+  const codesKey = [...sfxChannels, ...bgmChannels].map(c => c.code).join(',');
+  useEffect(() => {
+    if (!getLevel) return undefined;
+    let raf = 0;
+    const tick = () => {
+      const codes = codesKey ? codesKey.split(',') : [];
+      setLevels(prev => {
+        let changed = false;
+        const next = {};
+        codes.forEach(code => {
+          const v = getLevel(code);
+          next[code] = v;
+          if (Math.abs((prev[code] || 0) - v) > 0.01) changed = true;
+        });
+        return changed ? next : prev;
+      });
+      raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [getLevel, codesKey]);
+
   return (
     <div className="mixer-groups flex flex-col gap-5">
       {sfxChannels.length > 0 && (
@@ -125,7 +172,7 @@ export function MixerGroups({ sfxChannels, bgmChannels, sfxBank, sfxPlayingCodes
           <h3 className="text-xs font-bold text-slate-500 ml-2 mb-2">효과음 · 뱅크 {sfxBank}</h3>
           <div className="mixer-row flex flex-wrap gap-2">
             {sfxChannels.map(ch => (
-              <ChannelStrip key={ch.code} ch={ch} kind="sfx" state={sfxPlayingCodes.has(ch.code)}
+              <ChannelStrip key={ch.code} ch={ch} kind="sfx" state={sfxPlayingCodes.has(ch.code)} level={levels[ch.code] || 0}
                 onVolumeChange={onVolumeChange} onBgmToggle={onBgmToggle} onBgmStop={onBgmStop}
                 onSfxTrigger={onSfxTrigger} onSfxStop={onSfxStop} />
             ))}
@@ -137,7 +184,7 @@ export function MixerGroups({ sfxChannels, bgmChannels, sfxBank, sfxPlayingCodes
           <h3 className="text-xs font-bold text-slate-500 ml-2 mb-2">BGM · 숫자 키패드</h3>
           <div className="mixer-row flex flex-wrap gap-2">
             {bgmChannels.map(ch => (
-              <ChannelStrip key={ch.code} ch={ch} kind="bgm" state={bgmUIStates[ch.code]}
+              <ChannelStrip key={ch.code} ch={ch} kind="bgm" state={bgmUIStates[ch.code]} level={levels[ch.code] || 0}
                 onVolumeChange={onVolumeChange} onBgmToggle={onBgmToggle} onBgmStop={onBgmStop}
                 onSfxTrigger={onSfxTrigger} onSfxStop={onSfxStop} />
             ))}

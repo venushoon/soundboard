@@ -35,6 +35,38 @@ function CueSeekBar({ elapsed, duration, onSeek }) {
   );
 }
 
+// 큐 진행 방식 + 프리웨이트(대기) 편집: 모든 실행 큐(사운드·페이드) 공통
+function CueFlowControls({ item, idx, updateCueItem }) {
+  return (
+    <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-1 text-[10px] text-slate-400" onClick={(e) => e.stopPropagation()}>
+      <label className="inline-flex items-center gap-1">
+        진행
+        <select
+          value={item.continueMode || 'manual'}
+          onChange={(e) => updateCueItem(idx, { continueMode: e.target.value })}
+          className="bg-slate-800 border border-slate-700 rounded px-1 py-0.5 text-slate-200 outline-none cursor-pointer"
+          title="이 큐를 실행한 뒤 다음 큐를 어떻게 진행할지 정합니다"
+        >
+          <option value="manual">수동 (GO 대기)</option>
+          <option value="follow">끝나면 자동 진행</option>
+          <option value="continue">다음 큐 동시 시작</option>
+        </select>
+      </label>
+      <label className="inline-flex items-center gap-1">
+        대기
+        <input
+          type="number" min="0" max="600" step="0.5"
+          value={item.preWaitSec ?? 0}
+          onChange={(e) => updateCueItem(idx, { preWaitSec: Math.max(0, parseFloat(e.target.value) || 0) })}
+          className="w-14 bg-slate-800 border border-slate-700 rounded px-1 py-0.5 text-slate-200 text-center outline-none"
+          title="이 큐가 실행 지시를 받은 뒤 실제로 울리기까지의 지연 시간(초)"
+        />
+        초 후 재생
+      </label>
+    </div>
+  );
+}
+
 export default function CuePlayerWindow({
   mappings,
   getSound,
@@ -62,6 +94,7 @@ export default function CuePlayerWindow({
   resetCue,
   addCue,
   addDivider,
+  addFadeCue,
   updateCueItem,
   removeCue,
   moveCue,
@@ -381,7 +414,9 @@ export default function CuePlayerWindow({
               {cueList.length === 0 ? (
                 <span className="text-slate-400 font-semibold text-sm">아래에서 자판 또는 로컬 음원을 식순에 추가하세요</span>
               ) : nextCueItem ? (
-                nextSound ? (
+                nextCueItem.type === 'fade' ? (
+                  <span>🌗 페이드 아웃 <span className="text-sm font-bold text-sky-300">{nextCueItem.target === 'all' ? '전체 소리' : '재생 중인 BGM'} · {nextCueItem.seconds}초에 걸쳐</span></span>
+                ) : nextSound ? (
                   <span className="flex items-center gap-2">
                     <span>{nextSound.soundLabel}</span>
                     {!nextSound.audioBuffer && (
@@ -543,6 +578,14 @@ export default function CuePlayerWindow({
               >
                 + 구분선
               </button>
+              <button
+                type="button"
+                onClick={() => addFadeCue?.()}
+                className="bg-sky-800 hover:bg-sky-700 text-sky-100 text-[11px] font-medium px-2.5 py-1 rounded transition-colors flex-shrink-0"
+                title="재생 중인 소리를 정해진 시간에 걸쳐 서서히 줄이는 페이드 큐를 추가합니다"
+              >
+                + 🌗 페이드 큐
+              </button>
             </div>
 
             <div className="flex items-center gap-2 text-[11px] text-slate-400">
@@ -610,6 +653,100 @@ export default function CuePlayerWindow({
                       >
                         ✕
                       </button>
+                    </div>
+                  </div>
+                );
+              }
+
+              if (item.type === 'fade') {
+                const isNextF = idx === nextPlayableIndex;
+                const isPastF = idx <= cueIndex;
+                return (
+                  <div
+                    key={item.id || `fade-${idx}`}
+                    onClick={() => selectNextCue(idx)}
+                    className={`flex flex-wrap items-center gap-2 rounded-xl px-3 py-2 border transition-all cursor-pointer ${
+                      isNextF
+                        ? 'bg-green-950/40 border-green-400 shadow-[0_0_15px_rgba(74,222,128,0.18)]'
+                        : isPastF
+                        ? 'bg-[#181b22]/70 border-slate-800/80 opacity-65 hover:opacity-100'
+                        : 'bg-[#1c212b] border-slate-800 hover:border-slate-600'
+                    }`}
+                  >
+                    <div className="flex items-center gap-2 flex-grow min-w-0 flex-wrap">
+                      <span className={`w-6 h-6 rounded-full text-xs font-extrabold flex items-center justify-center flex-shrink-0 ${
+                        isNextF ? 'bg-green-400 text-slate-950' : 'bg-sky-900 text-sky-300'
+                      }`}>
+                        {soundOrderMap[idx]}
+                      </span>
+                      {isNextF && (
+                        <span className="px-1.5 py-0.5 rounded bg-green-400 text-slate-950 text-[10px] font-black flex-shrink-0">
+                          NEXT 대기
+                        </span>
+                      )}
+                      <span className="text-sky-300 font-bold text-xs flex-shrink-0">🌗 페이드 아웃</span>
+                      <select
+                        value={item.target || 'bgm'}
+                        onClick={(e) => e.stopPropagation()}
+                        onChange={(e) => updateCueItem(idx, { target: e.target.value })}
+                        className="bg-slate-800 border border-slate-700 rounded px-1.5 py-1 text-[11px] text-slate-100 outline-none cursor-pointer"
+                        title="페이드할 대상"
+                      >
+                        <option value="bgm">재생 중인 BGM</option>
+                        <option value="all">전체 소리 (BGM+효과음)</option>
+                      </select>
+                      <label className="inline-flex items-center gap-1 text-[11px] text-slate-400" onClick={(e) => e.stopPropagation()}>
+                        <input
+                          type="number" min="0.5" max="60" step="0.5"
+                          value={item.seconds ?? 3}
+                          onChange={(e) => updateCueItem(idx, { seconds: Math.min(60, Math.max(0.1, parseFloat(e.target.value) || 3)) })}
+                          className="w-14 bg-slate-800 border border-slate-700 rounded px-1 py-1 text-slate-100 text-center outline-none"
+                        />
+                        초에 걸쳐
+                      </label>
+                      <input
+                        type="text"
+                        value={item.memo || ''}
+                        onClick={(e) => e.stopPropagation()}
+                        onChange={(e) => updateCueItem(idx, { memo: e.target.value })}
+                        placeholder="메모 (예: 암전과 함께)"
+                        className="bg-transparent text-[11px] text-amber-300/90 placeholder:text-slate-600 border-b border-transparent focus:border-amber-400/60 outline-none flex-grow min-w-[80px]"
+                      />
+                    </div>
+                    <div className="flex items-center gap-1 flex-shrink-0" onClick={(e) => e.stopPropagation()}>
+                      <button
+                        onClick={() => playCueAtIndex(idx)}
+                        className="px-2 py-1 rounded bg-sky-700/80 hover:bg-sky-600 text-white text-[11px] font-bold transition-colors"
+                        title="이 페이드를 즉시 실행합니다"
+                      >
+                        ▶ 실행
+                      </button>
+                      <button
+                        onClick={() => moveCue(idx, -1)}
+                        disabled={idx === 0}
+                        className="w-6 h-6 rounded bg-slate-800/80 hover:bg-slate-700 disabled:opacity-30 text-slate-300 text-xs"
+                        title="위로 이동"
+                      >
+                        ↑
+                      </button>
+                      <button
+                        onClick={() => moveCue(idx, 1)}
+                        disabled={idx === cueList.length - 1}
+                        className="w-6 h-6 rounded bg-slate-800/80 hover:bg-slate-700 disabled:opacity-30 text-slate-300 text-xs"
+                        title="아래로 이동"
+                      >
+                        ↓
+                      </button>
+                      <button
+                        onClick={() => removeCue(idx)}
+                        className="w-6 h-6 rounded bg-slate-800/80 hover:bg-rose-950 text-rose-400 text-xs"
+                        title="삭제"
+                      >
+                        ✕
+                      </button>
+                    </div>
+                    <div className="w-full">
+                      <CueFlowControls item={item} idx={idx} updateCueItem={updateCueItem} />
                     </div>
                   </div>
                 );
@@ -736,6 +873,7 @@ export default function CuePlayerWindow({
                         placeholder="메모 입력 (클릭하여 식순 노트 작성)..."
                         className="w-full bg-transparent text-[11px] text-amber-300/90 placeholder:text-slate-600 border-b border-transparent focus:border-amber-400/60 outline-none mt-0.5"
                       />
+                      <CueFlowControls item={item} idx={idx} updateCueItem={updateCueItem} />
                     </div>
                   </div>
 

@@ -7,7 +7,7 @@ import { INITIAL_MAPPINGS, STORAGE_KEY, SFX_CODES, blobToBase64 } from './consta
 // mappings에서 효과음 배치만 추려 뱅크 저장용 형태로 변환
 const sfxAssignmentsOf = (list) => (list || [])
   .filter(m => SFX_CODES.includes(m.code))
-  .map(({ code, soundId, soundLabel, loop, volume }) => ({ code, soundId: soundId || null, soundLabel, loop: !!loop, volume: volume ?? 1.0 }));
+  .map(({ code, soundId, soundLabel, loop, volume, color }) => ({ code, soundId: soundId || null, soundLabel, loop: !!loop, volume: volume ?? 1.0, color: color || null }));
 import { useAudioEngine } from './hooks/useAudioEngine.js';
 import { useCueList } from './hooks/useCueList.js';
 import KeycapButton from './components/KeycapButton.jsx';
@@ -22,6 +22,17 @@ import CuePlayerWindow from './components/CuePlayerWindow.jsx';
 
 let localFileSeq = 1;
 
+// 라이브러리 사운드의 재생 메타(적용 게인·페이드·재생 구간)를 자판 매핑에 실을 형태.
+// 엔진은 매핑에 실린 이 값들로 페이드와 구간 재생을 수행한다.
+const playMetaOf = (sound) => sound ? {
+  soundGainDb: sound.gainDb ?? 0,
+  fadeInSec: sound.fadeInSec ?? 0,
+  fadeOutSec: sound.fadeOutSec ?? 0,
+  startSec: sound.startSec ?? 0,
+  endSec: typeof sound.endSec === 'number' ? sound.endSec : null,
+} : { soundGainDb: 0, fadeInSec: 0, fadeOutSec: 0, startSec: 0, endSec: null };
+const EMPTY_PLAY_META = playMetaOf(null);
+
 const SoundBoard = () => {
   const [mappings, setMappings] = useState(() => {
     const saved = localStorage.getItem(STORAGE_KEY);
@@ -31,7 +42,7 @@ const SoundBoard = () => {
         return INITIAL_MAPPINGS.map(init => {
           const found = parsed.find(p => p.code === init.code);
           return found
-            ? { ...init, soundLabel: found.soundLabel, loop: found.loop ?? init.loop, volume: found.volume ?? init.volume }
+            ? { ...init, soundLabel: found.soundLabel, loop: found.loop ?? init.loop, volume: found.volume ?? init.volume, color: found.color || init.color }
             : init;
         });
       } catch { return INITIAL_MAPPINGS; }
@@ -84,12 +95,10 @@ const SoundBoard = () => {
     try {
       const st = await api.getState();
       setLibrary({ categories: st.categories, sounds: st.sounds });
-      // 라이브러리에서 바뀐 사운드별 음량 보정값을 자판 재생에도 즉시 반영
-      const gainById = new Map((st.sounds || []).map(s => [s.id, s.gainDb ?? 0]));
+      // 라이브러리에서 바뀐 사운드별 재생 메타(게인·페이드·구간)를 자판 재생에도 즉시 반영
+      const metaById = new Map((st.sounds || []).map(s => [s.id, playMetaOf(s)]));
       setMappings(prev => prev.map(m => (
-        m.soundId && gainById.has(m.soundId) && m.soundGainDb !== gainById.get(m.soundId)
-          ? { ...m, soundGainDb: gainById.get(m.soundId) }
-          : m
+        m.soundId && metaById.has(m.soundId) ? { ...m, ...metaById.get(m.soundId) } : m
       )));
       return st;
     } catch { return null; }
@@ -103,7 +112,8 @@ const SoundBoard = () => {
 
   const {
     initAudioContext, bgmUIStates, sfxPlayingCodes, stopBGM, fadeOutBGM, seekBGM,
-    handleBGMPlayback, toggleSfx, stopSfx, getPlaybackInfo, handlePanicStop: enginePanicStop,
+    stopBGMWithFade, getChannelLevel,
+    handleBGMPlayback, toggleSfx, stopSfx, fadeOutSfx, getActiveBgmCodes, getPlayingSfxCodes, getPlaybackInfo, handlePanicStop: enginePanicStop,
     applyLiveSetting,
   } = useAudioEngine({ mappingsRef, sfxVolumeRef });
 
@@ -124,19 +134,23 @@ const SoundBoard = () => {
     isCueMode, setIsCueMode,
     cueAddSelection, setCueAddSelection, isCueModeRef,
     triggerNextCue, playCueAtIndex, selectNextCue, stepNextCue,
-    resetCue, addCue, addLocalCue, addDivider, updateCueItem, updateLocalCueByCode,
+    resetCue, addCue, addLocalCue, addDivider, addFadeCue, cancelCueTimers, updateCueItem, updateLocalCueByCode,
     removeCue, moveCue, clearCueList, setCueList,
   } = useCueList({
     mappingsRef,
     playSfx: toggleSfx,
     handleBGMPlayback,
+    fadeOutBGM,
+    fadeOutSfx,
+    getActiveBgmCodes,
+    getPlayingSfxCodes,
     showToast,
     onRemoveLocalCodes: handleRemoveLocalCodes,
   });
 
   // 자판 음원(mappings) + 큐에 직접 등록된 로컬 음원을 통합한 전체 사운드 목록
   const allSounds = useMemo(() => {
-    const gainById = new Map((library.sounds || []).map(s => [s.id, s.gainDb ?? 0]));
+    const soundById = new Map((library.sounds || []).map(s => [s.id, s]));
     const localItemsMap = new Map();
     cueList.forEach((item) => {
       if ((item.source === 'local' || String(item.code).startsWith('local_')) && item.code) {
@@ -151,7 +165,7 @@ const SoundBoard = () => {
             isDecoding: false,
             loop: item.loop ?? false,
             volume: item.volume ?? 1.0,
-            soundGainDb: item.soundId ? (gainById.get(item.soundId) ?? 0) : 0,
+            ...playMetaOf(item.soundId ? soundById.get(item.soundId) : null),
             isLocalCue: true,
           });
         }
@@ -335,7 +349,8 @@ const SoundBoard = () => {
             soundLabel: saved.soundLabel || init.soundLabel,
             loop: saved.loop ?? init.loop,
             volume: saved.volume ?? init.volume,
-            soundGainDb: saved.soundId ? (soundById.get(saved.soundId)?.gainDb ?? 0) : 0,
+            color: saved.color || init.color,
+            ...playMetaOf(saved.soundId ? soundById.get(saved.soundId) : null),
             audioBuffer: decoded[init.code] || null,
           };
         }));
@@ -385,7 +400,7 @@ const SoundBoard = () => {
     const id = setTimeout(() => {
       const activeAssign = sfxAssignmentsOf(mappings);
       api.saveBoard({
-        mappings: mappings.map(({ code, soundId, soundLabel, loop, volume }) => ({ code, soundId: soundId || null, soundLabel, loop, volume })),
+        mappings: mappings.map(({ code, soundId, soundLabel, loop, volume, color }) => ({ code, soundId: soundId || null, soundLabel, loop, volume, color: color || null })),
         sfxVolume,
         sfxBank,
         banks: {
@@ -462,9 +477,10 @@ const SoundBoard = () => {
 
   const handlePanicStop = useCallback(() => {
     enginePanicStop();
+    cancelCueTimers();
     setActiveKeys(new Set());
     showToast('전체 정지되었습니다', 'success');
-  }, [enginePanicStop, showToast]);
+  }, [enginePanicStop, cancelCueTimers, showToast]);
 
   useEffect(() => {
     const isTypingTarget = (doc = document) =>
@@ -561,7 +577,7 @@ const SoundBoard = () => {
 
   const handleDeleteSound = useCallback((code) => {
     stopBGM(code);
-    setMappings(prev => prev.map(s => s.code === code ? { ...s, audioBuffer: null, soundId: null, soundGainDb: 0 } : s));
+    setMappings(prev => prev.map(s => s.code === code ? { ...s, audioBuffer: null, soundId: null, ...EMPTY_PLAY_META } : s));
     showToast('자판에서 해제했습니다 (파일은 라이브러리에 남아 있습니다)', 'success');
   }, [stopBGM, showToast]);
 
@@ -571,7 +587,7 @@ const SoundBoard = () => {
       const blob = await api.fetchSoundBlob(sound.id);
       const audioBuffer = await ctx.decodeAudioData(await blob.arrayBuffer());
       stopBGM(code);
-      setMappings(prev => prev.map(s => (s.code === code ? { ...s, audioBuffer, soundId: sound.id, soundLabel: sound.name, soundGainDb: sound.gainDb ?? 0 } : s)));
+      setMappings(prev => prev.map(s => (s.code === code ? { ...s, audioBuffer, soundId: sound.id, soundLabel: sound.name, ...playMetaOf(sound) } : s)));
       showToast(`「${sound.name}」을(를) 자판에 배치했습니다`, 'success');
     } catch { showToast('자판 배치에 실패했습니다', 'error'); }
   }, [initAudioContext, stopBGM, showToast]);
@@ -601,7 +617,7 @@ const SoundBoard = () => {
         if (!SFX_CODES.includes(m.code)) return m;
         const a = targetByCode.get(m.code);
         if (!a) {
-          return { ...m, soundId: null, audioBuffer: null, soundGainDb: 0, soundLabel: initByCode.get(m.code)?.soundLabel || m.soundLabel, loop: false, volume: 1.0 };
+          return { ...m, soundId: null, audioBuffer: null, ...EMPTY_PLAY_META, soundLabel: initByCode.get(m.code)?.soundLabel || m.soundLabel, loop: false, volume: 1.0, color: initByCode.get(m.code)?.color || m.color };
         }
         return {
           ...m,
@@ -609,8 +625,9 @@ const SoundBoard = () => {
           soundLabel: a.soundLabel || m.soundLabel,
           loop: a.loop ?? false,
           volume: a.volume ?? 1.0,
+          color: a.color || initByCode.get(m.code)?.color || m.color,
           audioBuffer: decoded[m.code] || null,
-          soundGainDb: a.soundId ? (soundById.get(a.soundId)?.gainDb ?? 0) : 0,
+          ...playMetaOf(a.soundId ? soundById.get(a.soundId) : null),
         };
       }));
       setBanks(prev => ({ ...prev, [sfxBank]: curAssign, [next]: target }));
@@ -622,7 +639,7 @@ const SoundBoard = () => {
   }, [sfxBank, banks, initAudioContext, library.sounds, showToast]);
 
   const handleUnassignSound = useCallback((soundId) => {
-    setMappings(prev => prev.map(s => (s.soundId === soundId ? { ...s, audioBuffer: null, soundId: null, soundGainDb: 0 } : s)));
+    setMappings(prev => prev.map(s => (s.soundId === soundId ? { ...s, audioBuffer: null, soundId: null, ...EMPTY_PLAY_META } : s)));
   }, []);
 
   const requestDeleteSound = useCallback((code) => setPendingDeleteCode(code), []);
@@ -644,7 +661,7 @@ const SoundBoard = () => {
             fileType = blob.type || 'audio/mpeg';
           } catch { /* ignore */ }
         }
-        return { code: s.code, soundLabel: s.soundLabel, loop: s.loop, volume: s.volume, fileData, fileType };
+        return { code: s.code, soundLabel: s.soundLabel, loop: s.loop, volume: s.volume, color: s.color || null, fileData, fileType, fadeInSec: s.fadeInSec ?? 0, fadeOutSec: s.fadeOutSec ?? 0, startSec: s.startSec ?? 0, endSec: s.endSec ?? null };
       }));
 
       // 로컬 큐 음원 파일들도 함께 백업
@@ -667,7 +684,8 @@ const SoundBoard = () => {
         if (!a.soundId) continue;
         try {
           const blob = await api.fetchSoundBlob(a.soundId);
-          otherBankSounds.push({ code: a.code, soundLabel: a.soundLabel, loop: a.loop, volume: a.volume, fileData: await blobToBase64(blob), fileType: blob.type || 'audio/mpeg' });
+          const meta = playMetaOf((library.sounds || []).find(x => x.id === a.soundId));
+          otherBankSounds.push({ code: a.code, soundLabel: a.soundLabel, loop: a.loop, volume: a.volume, color: a.color || null, fileData: await blobToBase64(blob), fileType: blob.type || 'audio/mpeg', fadeInSec: meta.fadeInSec, fadeOutSec: meta.fadeOutSec, startSec: meta.startSec, endSec: meta.endSec });
         } catch { /* ignore */ }
       }
 
@@ -739,6 +757,9 @@ const SoundBoard = () => {
             const file = new File([blob], `${s.soundLabel || s.code}.mp3`, { type: blob.type || 'audio/mpeg' });
             const meta = await api.uploadSound({ file, categoryName: init?.type === 'bgm' ? '배경음악' : '효과음', type: init?.type || 'sfx', name: s.soundLabel });
             importedId = meta.id;
+            if (s.fadeInSec || s.fadeOutSec || s.startSec || s.endSec != null) {
+              try { await api.updateSound(meta.id, { fadeInSec: s.fadeInSec ?? 0, fadeOutSec: s.fadeOutSec ?? 0, startSec: s.startSec ?? 0, endSec: s.endSec ?? null }); } catch { /* ignore */ }
+            }
             audioBuffer = await ctx.decodeAudioData(await blob.arrayBuffer());
           } catch (e) {
             console.warn(`파일 복원 실패 (${s.code}):`, e);
@@ -750,6 +771,7 @@ const SoundBoard = () => {
           soundLabel: s.soundLabel ?? m.soundLabel,
           loop: s.loop ?? m.loop,
           volume: s.volume ?? m.volume,
+          color: s.color ?? m.color,
           audioBuffer: audioBuffer ?? m.audioBuffer,
           soundId: importedId ?? m.soundId,
         } : m));
@@ -768,9 +790,12 @@ const SoundBoard = () => {
               const file = new File([blob], `${s.soundLabel || s.code}.mp3`, { type: blob.type || 'audio/mpeg' });
               const meta = await api.uploadSound({ file, categoryName: '효과음', type: 'sfx', name: s.soundLabel });
               importedId = meta.id;
+              if (s.fadeInSec || s.fadeOutSec || s.startSec || s.endSec != null) {
+                try { await api.updateSound(meta.id, { fadeInSec: s.fadeInSec ?? 0, fadeOutSec: s.fadeOutSec ?? 0, startSec: s.startSec ?? 0, endSec: s.endSec ?? null }); } catch { /* ignore */ }
+              }
             } catch (e) { console.warn(`뱅크 파일 복원 실패 (${s.code}):`, e); }
           }
-          restoredAssign.push({ code: s.code, soundId: importedId, soundLabel: s.soundLabel || '', loop: !!s.loop, volume: s.volume ?? 1.0 });
+          restoredAssign.push({ code: s.code, soundId: importedId, soundLabel: s.soundLabel || '', loop: !!s.loop, volume: s.volume ?? 1.0, color: s.color || null });
         }
         setBanks(prev => ({ ...prev, [payload.otherBank]: restoredAssign }));
       }
@@ -873,6 +898,7 @@ const SoundBoard = () => {
             resetCue={resetCue}
             addCue={addCue}
             addDivider={addDivider}
+            addFadeCue={addFadeCue}
             updateCueItem={updateCueItem}
             removeCue={removeCue}
             moveCue={moveCue}
@@ -899,7 +925,8 @@ const SoundBoard = () => {
             bgmUIStates={bgmUIStates}
             onVolumeChange={(code, value) => handleSettingChange(code, 'volume', value)}
             onBgmToggle={(code) => { const s = getSound(code); if (s) handleBGMPlayback(s, 'toggle'); }}
-            onBgmStop={stopBGM}
+            onBgmStop={stopBGMWithFade}
+            getLevel={getChannelLevel}
             onSfxTrigger={(code) => { const s = getSound(code); if (!s) return; if (sfxPlayingCodes.has(code)) stopSfx(code); toggleSfx(s); }}
             onSfxStop={stopSfx}
             onSwitchBank={switchSfxBank}
@@ -1110,7 +1137,8 @@ const SoundBoard = () => {
             bgmUIStates={bgmUIStates}
             onVolumeChange={(code, value) => handleSettingChange(code, 'volume', value)}
             onBgmToggle={(code) => { const s = getSound(code); if (s) handleBGMPlayback(s, 'toggle'); }}
-            onBgmStop={stopBGM}
+            onBgmStop={stopBGMWithFade}
+            getLevel={getChannelLevel}
             onSfxTrigger={(code) => { const s = getSound(code); if (!s) return; if (sfxPlayingCodes.has(code)) stopSfx(code); toggleSfx(s); }}
             onSfxStop={stopSfx}
             poppedOut={isMixerPopupOpen}

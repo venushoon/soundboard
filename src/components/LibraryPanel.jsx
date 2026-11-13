@@ -50,6 +50,51 @@ function SoundVolumeRow({ sound, onRefresh, showToast }) {
   );
 }
 
+// 사운드별 재생 구간·페이드: 파일 자체를 편집하지 않고 시작/종료 지점과 페이드 인/아웃(초)만 지정
+function SoundPlayRow({ sound, onRefresh, showToast }) {
+  const dur = typeof sound.durationSec === 'number' ? sound.durationSec : null;
+  const [start, setStart] = useState(String(sound.startSec ?? 0));
+  const [end, setEnd] = useState(sound.endSec == null ? '' : String(sound.endSec));
+  const [fin, setFin] = useState(String(sound.fadeInSec ?? 0));
+  const [fout, setFout] = useState(String(sound.fadeOutSec ?? 0));
+  useEffect(() => { setStart(String(sound.startSec ?? 0)); }, [sound.startSec]);
+  useEffect(() => { setEnd(sound.endSec == null ? '' : String(sound.endSec)); }, [sound.endSec]);
+  useEffect(() => { setFin(String(sound.fadeInSec ?? 0)); }, [sound.fadeInSec]);
+  useEffect(() => { setFout(String(sound.fadeOutSec ?? 0)); }, [sound.fadeOutSec]);
+
+  const commit = async () => {
+    const s = Math.max(0, parseFloat(start) || 0);
+    const e = end.trim() === '' ? null : Math.max(0, parseFloat(end) || 0);
+    const fi = Math.min(30, Math.max(0, parseFloat(fin) || 0));
+    const fo = Math.min(30, Math.max(0, parseFloat(fout) || 0));
+    if (e !== null && e <= s) {
+      showToast('종료 지점은 시작 지점보다 뒤여야 합니다', 'error');
+      setEnd(sound.endSec == null ? '' : String(sound.endSec));
+      return;
+    }
+    const patch = {};
+    if (s !== (sound.startSec ?? 0)) patch.startSec = s;
+    if (e !== (sound.endSec ?? null)) patch.endSec = e;
+    if (fi !== (sound.fadeInSec ?? 0)) patch.fadeInSec = fi;
+    if (fo !== (sound.fadeOutSec ?? 0)) patch.fadeOutSec = fo;
+    if (!Object.keys(patch).length) return;
+    try { await onRefresh('updateSound', sound.id, patch); }
+    catch (err) { showToast(err.message, 'error'); }
+  };
+
+  const inputCls = 'w-14 bg-slate-900 border border-slate-600 rounded px-1 py-0.5 text-slate-100 text-center';
+  const enterBlur = (e) => { if (e.key === 'Enter') e.target.blur(); };
+  return (
+    <div className="bg-slate-800/60 rounded-lg px-2 py-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-slate-400">
+      <span className="whitespace-nowrap">⏱ 구간·페이드{dur ? ` (길이 ${dur.toFixed(1)}초)` : ''}</span>
+      <label className="inline-flex items-center gap-1">시작 <input type="number" min="0" step="0.1" value={start} onChange={(e) => setStart(e.target.value)} onBlur={commit} onKeyDown={enterBlur} className={inputCls} aria-label={`${sound.name} 시작 지점(초)`} />초</label>
+      <label className="inline-flex items-center gap-1">종료 <input type="number" min="0" step="0.1" value={end} placeholder="끝까지" onChange={(e) => setEnd(e.target.value)} onBlur={commit} onKeyDown={enterBlur} className={inputCls} aria-label={`${sound.name} 종료 지점(초)`} />초</label>
+      <label className="inline-flex items-center gap-1">페이드인 <input type="number" min="0" max="30" step="0.1" value={fin} onChange={(e) => setFin(e.target.value)} onBlur={commit} onKeyDown={enterBlur} className={inputCls} aria-label={`${sound.name} 페이드인(초)`} />초</label>
+      <label className="inline-flex items-center gap-1">페이드아웃 <input type="number" min="0" max="30" step="0.1" value={fout} onChange={(e) => setFout(e.target.value)} onBlur={commit} onKeyDown={enterBlur} className={inputCls} aria-label={`${sound.name} 페이드아웃(초)`} />초</label>
+    </div>
+  );
+}
+
 // 라이브러리(폴더별 사운드 보관함) — 서버 폴더가 곧 카테고리다.
 // 미리듣기는 자판 재생과 같은 보정 게인을 적용한 WebAudio 재생, 실제 연주용 배치는 자판 탭에서 한다.
 export default function LibraryPanel({
@@ -286,6 +331,7 @@ export default function LibraryPanel({
                 ? <div className="text-[11px] text-emerald-300 bg-emerald-400/10 rounded px-2 py-1">⌨️ 자판 <b>{assigned.keyLabel}</b> 키에 배치됨</div>
                 : <div className="text-[11px] text-slate-500">자판에 배치되지 않음</div>}
               <SoundVolumeRow sound={sound} onRefresh={onRefresh} showToast={showToast} />
+              <SoundPlayRow sound={sound} onRefresh={onRefresh} showToast={showToast} />
               <div className="flex flex-wrap gap-1.5 mt-auto">
                 <select
                   defaultValue="" aria-label={`${sound.name} 자판 배치`}
