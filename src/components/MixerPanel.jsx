@@ -152,7 +152,15 @@ const headerBtn = 'px-3 py-1.5 rounded-lg text-xs font-extrabold bg-slate-700 bo
 
 const MixerPanel = (props) => {
   const { sfxChannels, bgmChannels, poppedOut, onPopOut, onClosePopOut, onResetAll } = props;
-  const [open, setOpen] = useState(true);
+  // 처음 접속하면 접힌 상태가 기본. 한 번 펼치거나 접으면 그 선택을 기억한다.
+  const [open, setOpen] = useState(() => {
+    try { return localStorage.getItem('soundboard_mixer_open') === '1'; } catch { return false; }
+  });
+  const toggleOpen = () => setOpen((o) => {
+    const next = !o;
+    try { localStorage.setItem('soundboard_mixer_open', next ? '1' : '0'); } catch { /* ignore */ }
+    return next;
+  });
   const total = sfxChannels.length + bgmChannels.length;
 
   return (
@@ -172,7 +180,7 @@ const MixerPanel = (props) => {
             <>
               <button onClick={onResetAll} className={headerBtn}>↺ 초기화</button>
               <button onClick={onPopOut} className={headerBtn}>🪟 창으로 띄우기</button>
-              <button onClick={() => setOpen(o => !o)} aria-expanded={open} className={headerBtn}>
+              <button onClick={toggleOpen} aria-expanded={open} className={headerBtn}>
                 {open ? '접기' : '펼치기'}
               </button>
             </>

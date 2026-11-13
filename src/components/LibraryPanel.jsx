@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { dbToGain } from '../constants.js';
 import { STORAGE_MODE } from '../storage/api.js';
+import ConfirmDialog from './ConfirmDialog.jsx';
 
 const fmtDb = (v) => `${(v ?? 0) > 0 ? '+' : ''}${(v ?? 0).toFixed(1)}dB`;
 
@@ -62,6 +63,8 @@ export default function LibraryPanel({
   const [uploadCatId, setUploadCatId] = useState('');
   const [playingId, setPlayingId] = useState(null);
   const [analyzing, setAnalyzing] = useState(false);
+  const [pendingDeleteSound, setPendingDeleteSound] = useState(null);
+  const [pendingDeleteCategory, setPendingDeleteCategory] = useState(null);
   const ctxRef = useRef(null);
   const previewSrcRef = useRef(null);
   const bufferCacheRef = useRef(new Map());
@@ -140,9 +143,15 @@ export default function LibraryPanel({
     catch (e) { showToast(e.message, 'error'); }
   };
 
-  const handleDeleteCategory = async (cat) => {
+  const handleDeleteCategory = (cat) => {
     const count = sounds.filter(s => s.categoryId === cat.id).length;
-    if (!window.confirm(`폴더 「${cat.name}」를 삭제할까요?${count ? ` 안의 사운드 ${count}개는 '미분류' 폴더로 이동합니다.` : ''}`)) return;
+    setPendingDeleteCategory({ cat, count });
+  };
+
+  const confirmDeleteCategory = async () => {
+    const { cat } = pendingDeleteCategory || {};
+    setPendingDeleteCategory(null);
+    if (!cat) return;
     try {
       await onRefresh('deleteCategory', cat.id);
       if (activeCat === cat.id) setActiveCat('all');
@@ -166,7 +175,7 @@ export default function LibraryPanel({
         ok++;
       } catch (err) { showToast(`「${file.name}」 업로드 실패: ${err.message}`, 'error'); }
     }
-    if (ok) showToast(`${ok}개 사운드를 서버에 저장했습니다`, 'success');
+    if (ok) showToast(`${ok}개 사운드를 ${STORAGE_MODE === 'local' ? '브라우저에' : '서버에'} 저장했습니다`, 'success');
   };
 
   const handleRenameSound = async (sound) => {
@@ -176,13 +185,32 @@ export default function LibraryPanel({
     catch (e) { showToast(e.message, 'error'); }
   };
 
-  const handleDeleteSound = async (sound) => {
-    if (!window.confirm(`사운드 「${sound.name}」를 서버에서 완전히 삭제할까요? 자판에 배치돼 있으면 배치도 해제됩니다.`)) return;
+  const handleDeleteSound = (sound) => setPendingDeleteSound(sound);
+
+  const confirmDeleteSound = async () => {
+    const sound = pendingDeleteSound;
+    setPendingDeleteSound(null);
+    if (!sound) return;
     try {
       stopPreview();
       onUnassignSound?.(sound.id);
       await onRefresh('deleteSound', sound.id);
       showToast('사운드를 삭제했습니다', 'success');
+    } catch (e) { showToast(e.message, 'error'); }
+  };
+
+  const handleDownload = async (sound) => {
+    try {
+      const blob = await onRefresh('fetchSoundBlob', sound.id);
+      const ext = blob.type.includes('wav') ? '.wav' : blob.type.includes('ogg') ? '.ogg' : '.mp3';
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = sound.fileName || `${sound.name}${ext}`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 5000);
     } catch (e) { showToast(e.message, 'error'); }
   };
 
@@ -204,7 +232,7 @@ export default function LibraryPanel({
           {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
         </select>
         <button onClick={() => fileRef.current?.click()} className="px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-bold">
-          ⬆️ 서버에 업로드
+          ⬆️ {STORAGE_MODE === 'local' ? '브라우저에 업로드' : '서버에 업로드'}
         </button>
         <input ref={fileRef} type="file" accept="audio/*" multiple className="hidden" onChange={handleUpload} />
         <button onClick={handleAnalyzeAll} disabled={analyzing} className="px-4 py-2 rounded-lg bg-sky-700 hover:bg-sky-600 disabled:opacity-50 text-white text-sm font-bold">
@@ -275,13 +303,31 @@ export default function LibraryPanel({
                   {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
                 </select>
                 <button onClick={() => handleRenameSound(sound)} className="text-xs px-2 py-1.5 rounded bg-slate-700 hover:bg-slate-600">이름</button>
-                <a href={sound.url} download className="text-xs px-2 py-1.5 rounded bg-slate-700 hover:bg-slate-600">⬇️</a>
+                <button onClick={() => handleDownload(sound)} title="다운로드" className="text-xs px-2 py-1.5 rounded bg-slate-700 hover:bg-slate-600">⬇️</button>
                 <button onClick={() => handleDeleteSound(sound)} className="text-xs px-2 py-1.5 rounded bg-rose-900/60 hover:bg-rose-700 text-rose-200">삭제</button>
               </div>
             </div>
           );
         })}
       </div>
+      <ConfirmDialog
+        open={Boolean(pendingDeleteSound)}
+        title="사운드 삭제"
+        message={pendingDeleteSound ? `사운드 「${pendingDeleteSound.name}」를 ${STORAGE_MODE === 'local' ? '브라우저에서' : '서버에서'} 완전히 삭제할까요? 자판에 배치돼 있으면 배치도 해제됩니다.` : ''}
+        confirmLabel="삭제"
+        danger
+        onConfirm={confirmDeleteSound}
+        onCancel={() => setPendingDeleteSound(null)}
+      />
+      <ConfirmDialog
+        open={Boolean(pendingDeleteCategory)}
+        title="폴더 삭제"
+        message={pendingDeleteCategory ? `폴더 「${pendingDeleteCategory.cat.name}」를 삭제할까요?${pendingDeleteCategory.count ? ` 안의 사운드 ${pendingDeleteCategory.count}개는 '미분류' 폴더로 이동합니다.` : ''}` : ''}
+        confirmLabel="삭제"
+        danger
+        onConfirm={confirmDeleteCategory}
+        onCancel={() => setPendingDeleteCategory(null)}
+      />
     </div>
   );
 }
