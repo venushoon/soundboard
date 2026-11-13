@@ -262,11 +262,10 @@ const SoundBoard = () => {
       mixerWin.focus();
       return;
     }
-    const win = window.open(
-      '',
-      'SoundboardMixer',
-      'width=1180,height=660,left=140,top=120,resizable=yes,scrollbars=yes'
-    );
+    // 크기·위치 옵션을 주면 브라우저가 '팝업형 창'으로 만들어 제목줄 더블클릭 확대 같은
+    // OS 기본 동작이 막힌다. 김님 결정으로 옵션을 빼고 일반 브라우저 창/탭으로 연다 —
+    // 브라우저 설정에 따라 탭으로 열리면 밖으로 끌어내면 일반 창이 된다.
+    const win = window.open('', 'SoundboardMixer');
     if (win) {
       setMixerWin(win);
       win.focus();
@@ -276,6 +275,9 @@ const SoundBoard = () => {
   }, [mixerWin, initAudioContext, showToast]);
 
   const closeMixerPopup = useCallback(() => {
+    mixerFitRef.current = null;
+    mixerFsRef.current = false;
+    setIsMixerFitted(false);
     setMixerWin((prev) => {
       if (prev && !prev.closed) {
         try { prev.close(); } catch { /* ignore */ }
@@ -283,6 +285,76 @@ const SoundBoard = () => {
       return null;
     });
   }, []);
+
+  // 믹서 팝업 창을 지금 있는 모니터 화면에 맞추기/원래 크기로 토글.
+  // 팝업형 창은 제목줄 더블클릭 확대가 브라우저에서 막혀 있어 버튼으로 제공한다.
+  // 크기 조절(moveTo/resizeTo/screen 정보)은 다중 모니터에서 메인 모니터 기준으로 처리되는
+  // 브라우저 동작이 실측으로 확인돼서, 주 방식은 전체화면(Fullscreen API)으로 한다 —
+  // 전체화면은 OS가 '창이 실제로 있는 모니터'에 띄우므로 모니터를 가리지 않는다.
+  const mixerFitRef = useRef(null);
+  const mixerFsRef = useRef(false);
+  const [isMixerFitted, setIsMixerFitted] = useState(false);
+
+  // 전체화면 상태에서 Esc 등으로 빠져나오면 맞춤 상태를 함께 정리한다.
+  useEffect(() => {
+    if (!mixerWin || mixerWin.closed) return undefined;
+    const doc = mixerWin.document;
+    const onFsChange = () => {
+      if (!doc.fullscreenElement && mixerFsRef.current) {
+        mixerFsRef.current = false;
+        mixerFitRef.current = null;
+        setIsMixerFitted(false);
+      }
+    };
+    doc.addEventListener('fullscreenchange', onFsChange);
+    return () => doc.removeEventListener('fullscreenchange', onFsChange);
+  }, [mixerWin]);
+
+  const toggleMixerFit = useCallback(() => {
+    const win = mixerWin;
+    if (!win || win.closed) return;
+    const doc = win.document;
+    // 이미 맞춰진 상태면 원래 크기로 복원한다 (전체화면이면 해제 후 잠시 기다려 복원).
+    if (mixerFitRef.current) {
+      const p = mixerFitRef.current;
+      mixerFitRef.current = null;
+      const wasFs = mixerFsRef.current || !!doc.fullscreenElement;
+      mixerFsRef.current = false;
+      setIsMixerFitted(false);
+      const restore = () => {
+        if (win.closed) return;
+        try {
+          win.resizeTo(p.w, p.h);
+          win.moveTo(p.x, p.y);
+          win.focus();
+        } catch { /* ignore */ }
+      };
+      if (wasFs) {
+        try { doc.exitFullscreen().catch(() => {}); } catch { /* ignore */ }
+        setTimeout(restore, 300);
+      } else {
+        restore();
+      }
+      return;
+    }
+    mixerFitRef.current = { x: win.screenX, y: win.screenY, w: win.outerWidth, h: win.outerHeight };
+    setIsMixerFitted(true);
+    win.focus();
+    const el = doc.documentElement;
+    if (el.requestFullscreen) {
+      el.requestFullscreen()
+        .then(() => { mixerFsRef.current = true; })
+        .catch(() => {
+          // 전체화면이 거부된 환경에서만 크기 조절 방식으로 맞춘다.
+          mixerFsRef.current = false;
+          const s = win.screen;
+          try {
+            win.moveTo(typeof s.availLeft === 'number' ? s.availLeft : 0, typeof s.availTop === 'number' ? s.availTop : 0);
+            win.resizeTo(s.availWidth, s.availHeight);
+          } catch { /* ignore */ }
+        });
+    }
+  }, [mixerWin]);
 
   const handleToggleCueMode = useCallback(() => {
     if (isCueMode) {
@@ -932,6 +1004,8 @@ const SoundBoard = () => {
             onSwitchBank={switchSfxBank}
             onPanicStop={handlePanicStop}
             onResetAll={() => setShowVolumeResetConfirm(true)}
+            onToggleFit={toggleMixerFit}
+            isFitted={isMixerFitted}
             onCloseWindow={closeMixerPopup}
           />
         </WindowPortal>

@@ -141,29 +141,37 @@ function ChannelStrip({ ch, kind, state, level, onVolumeChange, onBgmToggle, onB
 
 // 채널 그룹(효과음/BGM) — 인라인 패널과 팝업 창이 공유한다
 export function MixerGroups({ sfxChannels, bgmChannels, sfxBank, sfxPlayingCodes, bgmUIStates, getLevel, onVolumeChange, onBgmToggle, onBgmStop, onSfxTrigger, onSfxStop }) {
-  // 채널별 출력 레벨을 rAF로 읽어 미터에 반영 (값이 실제로 변할 때만 다시 그림)
+  // 채널별 출력 레벨을 짧은 주기 타이머로 읽어 미터에 반영한다.
+  // rAF는 메인 창이 가려지거나 최소화되면 멈춰 미터가 얼어붙으므로 타이머를 쓴다.
+  // 재생 중이 아닌 채널은 0으로 고정해, 소리가 끝난 뒤 미터 잔상이 남지 않게 한다.
   const [levels, setLevels] = useState({});
-  const codesKey = [...sfxChannels, ...bgmChannels].map(c => c.code).join(',');
+  const liveRef = useRef({ sfxChannels, bgmChannels, sfxPlayingCodes, bgmUIStates });
+  liveRef.current = { sfxChannels, bgmChannels, sfxPlayingCodes, bgmUIStates };
   useEffect(() => {
     if (!getLevel) return undefined;
-    let raf = 0;
     const tick = () => {
-      const codes = codesKey ? codesKey.split(',') : [];
+      const { sfxChannels: sfx, bgmChannels: bgm, sfxPlayingCodes: playing, bgmUIStates: bgmStates } = liveRef.current;
       setLevels(prev => {
-        let changed = false;
         const next = {};
-        codes.forEach(code => {
-          const v = getLevel(code);
-          next[code] = v;
-          if (Math.abs((prev[code] || 0) - v) > 0.01) changed = true;
+        sfx.forEach(ch => {
+          const raw = playing.has(ch.code) ? getLevel(ch.code) : 0;
+          next[ch.code] = raw < 0.02 ? 0 : raw;
         });
+        bgm.forEach(ch => {
+          const st = bgmStates[ch.code];
+          const raw = (st === 'playing' || st === 'fading') ? getLevel(ch.code) : 0;
+          next[ch.code] = raw < 0.02 ? 0 : raw;
+        });
+        const keys = Object.keys(next);
+        const changed = keys.length !== Object.keys(prev).length
+          || keys.some(code => (next[code] === 0 ? (prev[code] || 0) !== 0 : Math.abs((prev[code] || 0) - next[code]) > 0.01));
         return changed ? next : prev;
       });
-      raf = requestAnimationFrame(tick);
     };
-    raf = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(raf);
-  }, [getLevel, codesKey]);
+    tick();
+    const id = setInterval(tick, 50);
+    return () => clearInterval(id);
+  }, [getLevel]);
 
   return (
     <div className="mixer-groups flex flex-col gap-5">
