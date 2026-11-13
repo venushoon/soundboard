@@ -131,12 +131,22 @@ async function fetchSeedFile(url) {
 
 async function realRecordingBlob(kind) {
   // 박수: Freesound 277021 (CC0) / 환호성: Hurray.ogg (퍼블릭 도메인) — Wikimedia Commons 미러
-  const src = kind === 'applause'
-    ? { url: 'https://upload.wikimedia.org/wikipedia/commons/6/6d/277021_sandermotions_applause-2.wav', from: 0.9, to: 5.7 }
-    : { url: 'https://upload.wikimedia.org/wikipedia/commons/e/e8/Hurray.ogg', from: 0.1, to: 3.4 };
-  const blob = await fetchSeedFile(src.url);
-  const buffer = await decodeBlob(blob);
-  return audioBufferToWavBlob(sliceBuffer(buffer, src.from, src.to));
+  // 박수는 원본 WAV(1.2MB) 대신 트랜스코딩된 OGG(110KB)를 먼저 시도한다.
+  const candidates = kind === 'applause'
+    ? [
+        { url: 'https://upload.wikimedia.org/wikipedia/commons/transcoded/6/6d/277021_sandermotions_applause-2.wav/277021_sandermotions_applause-2.wav.ogg', from: 0.9, to: 5.7 },
+        { url: 'https://upload.wikimedia.org/wikipedia/commons/6/6d/277021_sandermotions_applause-2.wav', from: 0.9, to: 5.7 },
+      ]
+    : [{ url: 'https://upload.wikimedia.org/wikipedia/commons/e/e8/Hurray.ogg', from: 0.1, to: 3.4 }];
+  let lastErr = null;
+  for (const src of candidates) {
+    try {
+      const blob = await fetchSeedFile(src.url);
+      const buffer = await decodeBlob(blob);
+      return audioBufferToWavBlob(sliceBuffer(buffer, src.from, src.to));
+    } catch (e) { lastErr = e; }
+  }
+  throw lastErr || new Error('recording fetch failed');
 }
 
 async function seedBlobFor(item) {
@@ -158,14 +168,18 @@ async function seedFromManifest() {
   const manifest = await (await fetch(`${base}seeds/manifest.json`)).json();
   const m = loadMeta();
   for (const name of manifest.categories || []) ensureCategoryByName(name);
+  const items = manifest.sounds || [];
+  // 네트워크/합성은 병렬로 미리 받아두고, 메타 반영(분석 포함)만 순서대로 한다 — 첫 로딩 단축.
+  const blobs = await Promise.all(items.map((item) => seedBlobFor(item).catch(() => null)));
   const boardByCode = {};
-  for (const item of manifest.sounds || []) {
-    try {
-      const blob = await seedBlobFor(item);
-      if (!blob) continue;
-      const sound = await addSound({ blob, categoryName: item.category, type: item.type, name: item.name, isExample: true });
-      if (item.boardCode) boardByCode[item.boardCode] = { soundId: sound.id, label: item.boardLabel };
-    } catch { /* 개별 시드 실패는 건너뜀 */ }
+  for (let i = 0; i < items.length; i++) {
+    const item = items[i];
+    const blob = blobs[i];
+    if (!blob) continue;
+    // 재시도 안전장치: 같은 이름의 예시 사운드가 이미 있으면 다시 만들지 않는다
+    const existing = m.sounds.find((s) => s.isExample && s.name === item.name);
+    const sound = existing || await addSound({ blob, categoryName: item.category, type: item.type, name: item.name, isExample: true });
+    if (item.boardCode) boardByCode[item.boardCode] = { soundId: sound.id, label: item.boardLabel };
   }
   for (const mp of m.board.mappings) {
     const seed = boardByCode[mp.code];
@@ -222,8 +236,9 @@ function ensureSeeded() {
   if (!seedPromise) {
     seedPromise = (async () => {
       const imported = await importLegacyIfAny().catch(() => false);
-      if (!imported) await seedFromManifest().catch(() => { loadMeta().seeded = true; persist(); });
-    })();
+      // 시드가 실패하면 seeded를 세우지 않는다 — 다음 실행에서 이어서 재시도(빈 보드로 굳는 것 방지)
+      if (!imported) await seedFromManifest();
+    })().catch((e) => { seedPromise = null; throw e; });
   }
   return seedPromise;
 }
