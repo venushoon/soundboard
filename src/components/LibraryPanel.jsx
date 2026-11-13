@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { dbToGain } from '../constants.js';
+import { STORAGE_MODE } from '../storage/api.js';
 
 const fmtDb = (v) => `${(v ?? 0) > 0 ? '+' : ''}${(v ?? 0).toFixed(1)}dB`;
 
@@ -209,7 +210,7 @@ export default function LibraryPanel({
         <button onClick={handleAnalyzeAll} disabled={analyzing} className="px-4 py-2 rounded-lg bg-sky-700 hover:bg-sky-600 disabled:opacity-50 text-white text-sm font-bold">
           {analyzing ? '🎚️ 분석 중…' : '🎚️ 전체 음량 균일화'}
         </button>
-        <span className="text-xs text-slate-400 ml-auto">총 {sounds.length}개 · 서버 저장 (브라우저를 바꿔도 유지)</span>
+        <span className="text-xs text-slate-400 ml-auto">총 {sounds.length}개 · {STORAGE_MODE === 'local' ? '브라우저 저장 (이 브라우저에만 유지)' : '서버 저장 (브라우저를 바꿔도 유지)'}</span>
       </div>
 
       <div className="flex flex-wrap gap-2 items-center">
