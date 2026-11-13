@@ -56,7 +56,7 @@ const KeycapButton = memo(({
             <div className="flex items-center gap-1.5 px-0.5">
               <span className="text-[8px] text-slate-400 font-medium">Vol</span>
               <input
-                type="range" min="0" max="1" step="0.1"
+                type="range" min="0" max="2" step="0.05"
                 value={sound.volume}
                 onChange={(e) => onSettingChange(sound.code, 'volume', parseFloat(e.target.value))}
                 aria-label={`${sound.soundLabel} 볼륨`}

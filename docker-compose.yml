@@ -1,0 +1,13 @@
+services:
+  soundboard:
+    build: .
+    container_name: soundboard
+    restart: unless-stopped
+    # Tailscale IP에만 바인딩 — tailnet 밖에서는 접근 불가 (naverpay-jupjup와 동일 방식)
+    ports:
+      - "100.84.215.20:8900:8900"
+    environment:
+      - TZ=Asia/Seoul
+      - PORT=8900
+    volumes:
+      - ./data:/app/data

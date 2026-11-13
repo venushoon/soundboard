@@ -1,4 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { soundGainOf } from '../constants.js';
+
+// iOS 오디오 세션 전환용 무음 WAV (0.25초) — 첫 제스처에서 재생하면 무음 모드에서도 소리가 난다
+const SILENT_WAV_URI = 'data:audio/wav;base64,UklGRhYIAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgATElTVBoAAABJTkZPSVNGVA4AAABMYXZmNjIuMTIuMTAyAGRhdGHQBwAAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgIA==';
 
 export function useAudioEngine({ mappingsRef, sfxVolumeRef }) {
   const audioCtxRef = useRef(null);
@@ -8,12 +12,46 @@ export function useAudioEngine({ mappingsRef, sfxVolumeRef }) {
   const [sfxPlayingCodes, setSfxPlayingCodes] = useState(() => new Set());
 
   const initAudioContext = useCallback(() => {
+    // iOS 17+: 오디오 세션을 '재생'으로 지정해 무음 모드에서도 WebAudio가 울리게 한다
+    try { if ('audioSession' in navigator) navigator.audioSession.type = 'playback'; } catch (e) {}
     if (!audioCtxRef.current) {
       audioCtxRef.current = new (window.AudioContext || window.webkitAudioContext)();
     }
-    if (audioCtxRef.current.state === 'suspended') audioCtxRef.current.resume();
+    if (audioCtxRef.current.state !== 'running') audioCtxRef.current.resume();
     return audioCtxRef.current;
   }, []);
+
+  // iOS 잠금 해제: 첫 사용자 제스처에서 컨텍스트를 깨우고 무음 클립을 재생해
+  // 오디오 세션을 재생 모드로 전환한다 (구형 iOS의 무음 스위치·자동재생 정책 대응)
+  const unlockedRef = useRef(false);
+  useEffect(() => {
+    const unlock = () => {
+      const ctx = initAudioContext();
+      if (!ctx || unlockedRef.current) return;
+      try {
+        const src = ctx.createBufferSource();
+        src.buffer = ctx.createBuffer(1, 1, 22050);
+        src.connect(ctx.destination);
+        src.start(0);
+      } catch (e) {}
+      try {
+        const el = new Audio(SILENT_WAV_URI);
+        const p = el.play();
+        if (p && p.catch) p.catch(() => {});
+      } catch (e) {}
+      if (ctx.state === 'running') {
+        unlockedRef.current = true;
+        window.removeEventListener('pointerdown', unlock);
+        window.removeEventListener('touchend', unlock);
+      }
+    };
+    window.addEventListener('pointerdown', unlock);
+    window.addEventListener('touchend', unlock);
+    return () => {
+      window.removeEventListener('pointerdown', unlock);
+      window.removeEventListener('touchend', unlock);
+    };
+  }, [initAudioContext]);
 
   const syncBGMStateToUI = useCallback(() => {
     const nextState = {};
@@ -78,7 +116,7 @@ export function useAudioEngine({ mappingsRef, sfxVolumeRef }) {
         newSource.buffer = nodeData.buffer;
         newSource.loop = currentSoundObj.loop;
         newSource.connect(nodeData.gainNode);
-        nodeData.gainNode.gain.value = currentSoundObj.volume;
+        nodeData.gainNode.gain.value = currentSoundObj.volume * soundGainOf(currentSoundObj);
 
         const duration = nodeData.buffer.duration;
         const offset = currentSoundObj.loop
@@ -104,7 +142,7 @@ export function useAudioEngine({ mappingsRef, sfxVolumeRef }) {
       const gainNode = ctx.createGain();
       source.buffer = currentSoundObj.audioBuffer;
       source.loop = currentSoundObj.loop;
-      gainNode.gain.value = currentSoundObj.volume;
+      gainNode.gain.value = currentSoundObj.volume * soundGainOf(currentSoundObj);
       source.connect(gainNode);
       gainNode.connect(ctx.destination);
       source.onended = () => stopBGM(currentSoundObj.code);
@@ -169,7 +207,7 @@ export function useAudioEngine({ mappingsRef, sfxVolumeRef }) {
     if (!ctx) return;
     const source = ctx.createBufferSource();
     const gainNode = ctx.createGain();
-    gainNode.gain.value = sfxVolumeRef.current * soundObj.volume;
+    gainNode.gain.value = sfxVolumeRef.current * soundObj.volume * soundGainOf(soundObj);
     source.buffer = soundObj.audioBuffer;
     source.connect(gainNode);
     gainNode.connect(ctx.destination);
@@ -181,6 +219,16 @@ export function useAudioEngine({ mappingsRef, sfxVolumeRef }) {
     source.start(0);
     syncSfxStateToUI();
   }, [initAudioContext, sfxVolumeRef, syncSfxStateToUI]);
+
+  // SFX 즉시 정지 (믹서 채널 버튼용): 재생 중이 아니면 아무 일도 하지 않는다
+  const stopSfx = useCallback((code) => {
+    const existing = sfxNodesRef.current.get(code);
+    if (!existing) return;
+    existing.source.onended = null;
+    try { existing.source.stop(); } catch (e) {}
+    sfxNodesRef.current.delete(code);
+    syncSfxStateToUI();
+  }, [syncSfxStateToUI]);
 
   const getPlaybackInfo = useCallback((code) => {
     const nodeData = activeNodesRef.current.get(code);
@@ -221,10 +269,12 @@ export function useAudioEngine({ mappingsRef, sfxVolumeRef }) {
   }, []);
 
   const applyLiveSetting = useCallback((code, setting, value) => {
+    const soundObj = mappingsRef.current.find(s => s.code === code);
+    const sg = soundGainOf(soundObj);
     const nodeData = activeNodesRef.current.get(code);
     if (nodeData) {
       if (setting === 'volume' && nodeData.gainNode && nodeData.state !== 'fading') {
-        nodeData.gainNode.gain.value = value;
+        nodeData.gainNode.gain.value = value * sg;
       }
       if (setting === 'loop' && nodeData.source) {
         nodeData.source.loop = value;
@@ -232,9 +282,9 @@ export function useAudioEngine({ mappingsRef, sfxVolumeRef }) {
     }
     const sfxData = sfxNodesRef.current.get(code);
     if (sfxData && setting === 'volume' && sfxData.gainNode) {
-      sfxData.gainNode.gain.value = sfxVolumeRef.current * value;
+      sfxData.gainNode.gain.value = sfxVolumeRef.current * value * sg;
     }
-  }, [sfxVolumeRef]);
+  }, [sfxVolumeRef, mappingsRef]);
 
   return {
     initAudioContext,
@@ -245,6 +295,7 @@ export function useAudioEngine({ mappingsRef, sfxVolumeRef }) {
     seekBGM,
     handleBGMPlayback,
     toggleSfx,
+    stopSfx,
     getPlaybackInfo,
     handlePanicStop,
     applyLiveSetting,

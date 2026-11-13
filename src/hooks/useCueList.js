@@ -29,6 +29,7 @@ export function normalizeCueItem(item) {
         loop: item.loop ?? false,
         volume: item.volume ?? 1.0,
         memo: item.memo || '',
+        soundId: item.soundId || null,
       };
     }
   }
@@ -192,6 +193,7 @@ export function useCueList({ mappingsRef, playSfx, handleBGMPlayback, showToast,
     loop = false,
     volume = 1.0,
     memo = '',
+    soundId = null,
   }) => {
     if (!code) return;
     setCueListRaw(prev => [
@@ -206,6 +208,7 @@ export function useCueList({ mappingsRef, playSfx, handleBGMPlayback, showToast,
         loop,
         volume,
         memo,
+        soundId,
       },
     ]);
   }, []);

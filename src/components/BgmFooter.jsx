@@ -102,7 +102,7 @@ export default function BgmFooter({
 
               <div className="flex items-center justify-between gap-4 px-1">
                 <input
-                  type="range" min="0" max="1" step="0.01" value={soundData.volume}
+                  type="range" min="0" max="2" step="0.01" value={soundData.volume}
                   onChange={(e) => handleSettingChange(code, 'volume', parseFloat(e.target.value))}
                   aria-label={`${soundData.soundLabel} 볼륨`}
                   className="flex-grow h-1.5 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-blue-500"

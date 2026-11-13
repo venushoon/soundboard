@@ -1,5 +1,6 @@
-// 업로드된 원본 오디오 파일(Blob)을 IndexedDB에 저장 -> 새로고침 후에도 복원
-// localStorage는 문자열만 저장 가능해 오디오 파일 자체는 담을 수 없어 별도 저장소 사용
+// [레거시] 예전 버전이 쓰던 IndexedDB 저장소.
+// 서버 저장형으로 바뀐 뒤로는 새 저장을 하지 않고, 예전 브라우저 저장분을
+// 서버로 마이그레이션할 때(loadAllSoundFiles) 읽는 용도로만 남아 있다.
 
 const DB_NAME = 'soundboard_files';
 const STORE = 'sounds';

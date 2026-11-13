@@ -1,11 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { formatTime } from '../constants.js';
-
-const SFX_CODES = [
-  'KeyQ', 'KeyW', 'KeyE', 'KeyR',
-  'KeyA', 'KeyS', 'KeyD', 'KeyF',
-  'KeyZ', 'KeyX', 'KeyC', 'KeyV',
-];
+import { formatTime, SFX_CODES } from '../constants.js';
 
 function CueSeekBar({ elapsed, duration, onSeek }) {
   const [dragValue, setDragValue] = useState(null);
@@ -54,8 +48,6 @@ export default function CuePlayerWindow({
   handleSoundAction,
   handleSettingChange,
   onUploadLocalCueFiles,
-  sfxVolume,
-  setSfxVolume,
   handlePanicStop,
   cueList,
   cueIndex,
@@ -292,7 +284,7 @@ export default function CuePlayerWindow({
                         <input
                           type="range"
                           min="0"
-                          max="1"
+                          max="2"
                           step="0.01"
                           value={soundData.volume}
                           onChange={(e) => handleSettingChange(code, 'volume', parseFloat(e.target.value))}
@@ -801,19 +793,6 @@ export default function CuePlayerWindow({
             <span className="text-[10px] text-slate-500">{showSfxDeck ? '▼ 접기' : '▲ 펼치기'}</span>
           </button>
 
-          <div className="flex items-center gap-2 text-xs text-slate-400">
-            <span className="text-[11px]">SFX 마스터 볼륨</span>
-            <input
-              type="range"
-              min="0"
-              max="1"
-              step="0.01"
-              value={sfxVolume}
-              onChange={(e) => setSfxVolume(parseFloat(e.target.value))}
-              aria-label="전체 효과음 볼륨"
-              className="w-20 h-1.5 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-emerald-400"
-            />
-          </div>
         </div>
 
         {showSfxDeck && (

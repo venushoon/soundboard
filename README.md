@@ -1,18 +1,51 @@
-# React + Vite
+# 기계식 사운드보드
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+키보드 자판(QWER…/숫자패드)으로 효과음·BGM을 재생하는 사운드보드.
+저장 방식이 두 가지이며 빌드 시점에 고른다. 앱 기능(자판/믹서/큐/라우드니스 보정)은 동일하다.
 
-Currently, two official plugins are available:
+- **서버 저장 모드 (기본)** — 모든 음원·자판 배치·큐 목록을 Express 서버에 저장. 기기가 바뀌어도 그대로.
+- **브라우저 저장 모드** — 서버 없이 정적 호스팅만으로 동작. 음원은 브라우저(IndexedDB/localStorage)에 저장된다(옛 GitHub 버전 방식). 예전 브라우저 저장분을 첫 실행 때 자동으로 승계한다.
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+## 저장 모드별 빌드
 
-## React Compiler
+```bash
+npm run build         # 서버 저장 모드 (Docker 배포용)
+npm run build:pages   # 브라우저 저장 모드 + GitHub Pages 경로(/soundboard/) — gh-pages 브랜치에 배포
+```
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+브라우저 모드의 예시 사운드는 바이너리 파일을 올리지 않는다: 짧은 효과음은 WebAudio로 그 자리에서 합성하고,
+바람·심장박동은 `public/sound/`의 파일을, 박수·환호성은 Wikimedia Commons의 실제 녹음(CC0/퍼블릭 도메인)을 받아온다.
+서버 모드의 시드 원본(mp3)은 `public/seeds/`에 두며 git에는 manifest만 올라간다(파일이 없으면 그 사운드만 건너뜀).
 
-## Expanding the ESLint configuration
+## 구조
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+- 프론트엔드: React + Vite + Tailwind, WebAudio API 재생 엔진 (기존 방식 유지)
+  - 효과음 자판 12키 (다중 재생), BGM 숫자패드 9키 (페이드아웃/일시정지/탐색/반복)
+  - 큐 모드: Space로 다음 큐 실행, 독립 팝업 큐플레이어 창
+  - 설정 내보내기/가져오기 (JSON 백업)
+- 백엔드: Node(Express) — `server/index.js`
+  - 음원 파일은 `data/files/<폴더 이름>/` 아래에 실제로 폴더별로 저장됨
+  - 메타데이터는 `data/db.json` (카테고리/사운드/자판 배치/큐 목록)
+  - 첫 실행 시 `public/seeds/`(manifest 기준)의 예시 사운드 13개(효과음 11 + 배경음악 2)를 심고 자판에 자동 배치
 
-## 테스트 
+## 라이브러리 (폴더)
+
+상단 **📚 라이브러리** 탭에서 폴더(카테고리) 단위로 사운드를 관리한다.
+
+- 폴더 만들기/이름 변경/삭제 (삭제 시 사운드는 `미분류`로 이동)
+- 다중 업로드, 검색, 미리듣기, 다운로드, 이름 변경, 폴더 이동
+- 사운드를 자판 키에 바로 배치 (효과음→효과음 키, 배경음악→숫자패드 키)
+
+## 실행
+
+```bash
+docker compose up -d --build
+# http://<서버 Tailscale IP>:8900 (compose에서 Tailscale IP에만 바인딩)
+```
+
+로컬 개발: `npm install` 후 프론트는 `npm run dev`, 서버는 `npm start` (dist 빌드 필요).
+
+## 마이그레이션
+
+예전 버전을 쓰던 브라우저로 접속하면 "브라우저 저장분을 서버로 가져오기" 배너가 뜬다.
+한 번 누르면 IndexedDB에 남아 있던 음원이 서버 라이브러리로 옮겨진다.
