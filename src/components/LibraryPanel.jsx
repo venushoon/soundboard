@@ -115,6 +115,17 @@ export default function LibraryPanel({
   const bufferCacheRef = useRef(new Map());
   const fileRef = useRef(null);
 
+  // 브라우저 저장 모드에서만: 이 브라우저가 쓰는 저장공간을 표시한다
+  const [storageUsage, setStorageUsage] = useState(null);
+  useEffect(() => {
+    if (STORAGE_MODE !== 'local' || !navigator.storage?.estimate) return undefined;
+    let alive = true;
+    navigator.storage.estimate()
+      .then(est => { if (alive && typeof est.usage === 'number') setStorageUsage(est.usage); })
+      .catch(() => {});
+    return () => { alive = false; };
+  }, [sounds.length]);
+
   const assignedBy = useMemo(() => {
     const map = {};
     mappings.forEach(m => { if (m.soundId) map[m.soundId] = m; });
@@ -283,7 +294,7 @@ export default function LibraryPanel({
         <button onClick={handleAnalyzeAll} disabled={analyzing} className="px-4 py-2 rounded-lg bg-sky-700 hover:bg-sky-600 disabled:opacity-50 text-white text-sm font-bold">
           {analyzing ? '🎚️ 분석 중…' : '🎚️ 전체 음량 균일화'}
         </button>
-        <span className="text-xs text-slate-400 ml-auto">총 {sounds.length}개 · {STORAGE_MODE === 'local' ? '브라우저 저장 (이 브라우저에만 유지)' : '서버 저장 (브라우저를 바꿔도 유지)'}</span>
+        <span className="text-xs text-slate-400 ml-auto">총 {sounds.length}개 · {STORAGE_MODE === 'local' ? '브라우저 저장 (이 브라우저에만 유지)' : '서버 저장 (브라우저를 바꿔도 유지)'}{STORAGE_MODE === 'local' && storageUsage != null ? ` · 사용 중 약 ${Math.max(1, Math.round(storageUsage / 1048576))}MB` : ''}</span>
       </div>
 
       <div className="flex flex-wrap gap-2 items-center">

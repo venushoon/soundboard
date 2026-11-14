@@ -1,10 +1,10 @@
 import React, { useRef } from 'react';
-import { MixerGroups } from './MixerPanel.jsx';
+import { MixerGroups, OutputDeviceSelect } from './MixerPanel.jsx';
 
 // 믹서 전용 팝업 창: 상단 메뉴 바(뱅크 전환·전체 정지·창 닫기) + 채널 스트립.
 // 듀얼 모니터의 보조 화면에 띄워 두는 용도라 폭 자동맞춤(.mixer-window)이 항상 적용된다.
 export default function MixerWindow({
-  sfxBank, bankCounts, onSwitchBank, onPanicStop, onResetAll, onToggleFit, isFitted, onCloseWindow, total, ...groupProps
+  sfxBank, bankCounts, onSwitchBank, onPanicStop, onResetAll, onToggleFit, isFitted, isDucking, onToggleDuck, outputDeviceId, onOutputDeviceChange, onCloseWindow, total, ...groupProps
 }) {
   // OS 제목줄 더블클릭은 웹앱이 받을 수 없어서, 앱 상단 바 더블클릭으로 대신한다.
   // 네이티브 dblclick 이벤트는 팝업(포털) 환경에서 전달이 안 되는 경우가 있어,
@@ -56,6 +56,15 @@ export default function MixerWindow({
           >
             ⏹ 전체 정지
           </button>
+          <button
+            onClick={onToggleDuck}
+            aria-pressed={!!isDucking}
+            title="멘트 중 BGM 줄이기 (단축키 D) — 켜면 BGM이 약 25%로 부드럽게 내려갑니다"
+            className={`px-3 py-1.5 rounded-lg text-xs font-extrabold border-b-4 active:border-b-0 active:translate-y-0.5 transition-all ${isDucking ? 'bg-amber-500 border-amber-700 text-white' : 'bg-slate-700 border-slate-900 text-slate-300 hover:bg-slate-600'}`}
+          >
+            🎙️ 멘트 중
+          </button>
+          <OutputDeviceSelect value={outputDeviceId} onChange={onOutputDeviceChange} />
           <button
             onClick={onToggleFit}
             aria-pressed={!!isFitted}

@@ -64,7 +64,7 @@ export function normalizeCueList(list) {
   return list.map(normalizeCueItem).filter(Boolean);
 }
 
-export function useCueList({ mappingsRef, playSfx, handleBGMPlayback, fadeOutBGM, fadeOutSfx, getActiveBgmCodes, getPlayingSfxCodes, showToast, onRemoveLocalCodes }) {
+export function useCueList({ mappingsRef, playSfx, handleBGMPlayback, fadeOutBGM, fadeOutSfx, getActiveBgmCodes, getPlayingSfxCodes, showToast, onRemoveLocalCodes, resolveCueSound }) {
   const [cueList, setCueListRaw] = useState(() => {
     const saved = localStorage.getItem(CUE_KEY);
     if (saved) {
@@ -142,7 +142,13 @@ export function useCueList({ mappingsRef, playSfx, handleBGMPlayback, fadeOutBGM
       }
       return item.seconds || 0;
     }
-    const soundObj = mappingsRef.current.find(s => s.code === item.code);
+    // 큐에 기록된 soundId가 있으면 그 음원을 직접 찾는다 — 효과음 뱅크를 바꿔도
+    // 큐는 원래 지정한 음원이 재생된다(뱅크 독립). 없을 때만 키 코드로 찾는다.
+    let soundObj = null;
+    if (item.soundId && resolveCueSound) {
+      try { soundObj = resolveCueSound(item); } catch { soundObj = null; }
+    }
+    if (!soundObj) soundObj = mappingsRef.current.find(s => s.code === item.code);
     if (!soundObj || !soundObj.audioBuffer) {
       showToast('등록되지 않은 음원입니다. 다음 큐로 건너뜁니다.', 'error');
       return 0;
@@ -153,7 +159,7 @@ export function useCueList({ mappingsRef, playSfx, handleBGMPlayback, fadeOutBGM
     const segEnd = typeof soundObj.endSec === 'number' ? Math.min(soundObj.endSec, bufDur) : bufDur;
     const segDur = Math.max(0, segEnd - (soundObj.startSec || 0));
     return soundObj.loop ? Infinity : segDur;
-  }, [mappingsRef, playSfx, handleBGMPlayback, fadeOutBGM, fadeOutSfx, getActiveBgmCodes, getPlayingSfxCodes, showToast]);
+  }, [mappingsRef, playSfx, handleBGMPlayback, fadeOutBGM, fadeOutSfx, getActiveBgmCodes, getPlayingSfxCodes, showToast, resolveCueSound]);
 
   // 특정 인덱스의 큐를 실행한다. 프리웨이트가 있으면 그만큼 늦게 울리고,
   // 진행 방식(continueMode)에 따라 다음 큐를 자동으로 이어 붙인다.
@@ -256,11 +262,26 @@ export function useCueList({ mappingsRef, playSfx, handleBGMPlayback, fadeOutBGM
     showToast('큐가 처음으로 이동했습니다', 'success');
   }, [showToast, cancelCueTimers]);
 
-  const addCue = useCallback((code, memo = '') => {
+  // snapshot: 큐를 만들 때 그 키에 배치돼 있던 음원의 정보. soundId가 있으면
+  // 나중에 뱅크가 바뀌어도 이 음원이 그대로 재생된다.
+  const addCue = useCallback((code, memo = '', snapshot = null) => {
     if (!code) return;
     setCueListRaw(prev => [
       ...prev,
-      { id: makeCueId(), type: 'sound', source: 'keycap', code, memo, continueMode: 'manual', preWaitSec: 0 },
+      {
+        id: makeCueId(),
+        type: 'sound',
+        source: 'keycap',
+        code,
+        memo,
+        soundId: snapshot?.soundId || null,
+        soundLabel: snapshot?.soundLabel || '',
+        audioType: snapshot?.audioType || 'bgm',
+        loop: snapshot?.loop ?? false,
+        volume: snapshot?.volume ?? 1.0,
+        continueMode: 'manual',
+        preWaitSec: 0,
+      },
     ]);
     setCueAddSelection('');
   }, []);

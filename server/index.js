@@ -324,6 +324,9 @@ app.get('/api/sounds/:id/file', (req, res) => {
   if (!s) return res.status(404).json({ error: '사운드 없음' });
   const p = soundPath(s);
   if (!p || !fs.existsSync(p)) return res.status(404).json({ error: '파일 없음' });
+  // 파일 경로는 사운드 id+이름으로 고유하고 앱 흐름에서 같은 경로의 내용이 바뀌지 않으므로
+  // 장기 캐시한다 — 재접속·새로고침 시 음원을 다시 받지 않는다.
+  res.set('Cache-Control', 'public, max-age=31536000, immutable');
   res.sendFile(p);
 });
 

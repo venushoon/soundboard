@@ -205,8 +205,41 @@ export function MixerGroups({ sfxChannels, bgmChannels, sfxBank, sfxPlayingCodes
 
 const headerBtn = 'px-3 py-1.5 rounded-lg text-xs font-extrabold bg-slate-700 border-b-4 border-slate-900 text-slate-300 hover:bg-slate-600 active:border-b-0 active:translate-y-0.5 transition-all';
 
+// 오디오 출력 장치 선택 (Chrome 계열의 AudioContext.setSinkId 지원 시에만 표시)
+export function OutputDeviceSelect({ value, onChange }) {
+  const [devices, setDevices] = useState([]);
+  const supported = typeof window !== 'undefined' && !!window.AudioContext && 'setSinkId' in window.AudioContext.prototype;
+  useEffect(() => {
+    if (!supported || !navigator.mediaDevices?.enumerateDevices) return undefined;
+    let alive = true;
+    const load = async () => {
+      try {
+        const list = await navigator.mediaDevices.enumerateDevices();
+        if (alive) setDevices(list.filter(d => d.kind === 'audiooutput'));
+      } catch { /* ignore */ }
+    };
+    load();
+    navigator.mediaDevices.addEventListener?.('devicechange', load);
+    return () => { alive = false; navigator.mediaDevices.removeEventListener?.('devicechange', load); };
+  }, [supported]);
+  if (!supported) return null;
+  return (
+    <select
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      title="소리가 날 출력 장치를 고릅니다"
+      className="max-w-[150px] px-2 py-1.5 rounded-lg text-xs font-bold bg-slate-700 border-b-4 border-slate-900 text-slate-300"
+    >
+      <option value="">🔊 기본 출력</option>
+      {devices.filter(d => d.deviceId && d.deviceId !== 'default').map((d, i) => (
+        <option key={d.deviceId} value={d.deviceId}>{d.label || `출력 장치 ${i + 1}`}</option>
+      ))}
+    </select>
+  );
+}
+
 const MixerPanel = (props) => {
-  const { sfxChannels, bgmChannels, poppedOut, onPopOut, onClosePopOut, onResetAll } = props;
+  const { sfxChannels, bgmChannels, poppedOut, onPopOut, onClosePopOut, onResetAll, isDucking, onToggleDuck, outputDeviceId, onOutputDeviceChange } = props;
   // 처음 접속하면 접힌 상태가 기본. 한 번 펼치거나 접으면 그 선택을 기억한다.
   const [open, setOpen] = useState(() => {
     try { return localStorage.getItem('soundboard_mixer_open') === '1'; } catch { return false; }
@@ -226,6 +259,17 @@ const MixerPanel = (props) => {
           <span className="text-[10px] font-normal text-slate-300 bg-slate-400/10 px-2 py-0.5 rounded">등록 {total}개</span>
         </h2>
         <div className="flex items-center gap-1.5">
+          <button
+            onClick={onToggleDuck}
+            aria-pressed={!!isDucking}
+            title="멘트 중 BGM 줄이기 (단축키 D) — 켜면 BGM이 약 25%로 부드럽게 내려갑니다"
+            className={isDucking
+              ? 'px-3 py-1.5 rounded-lg text-xs font-extrabold bg-amber-500 border-b-4 border-amber-700 text-white active:border-b-0 active:translate-y-0.5 transition-all'
+              : headerBtn}
+          >
+            🎙️ 멘트 중
+          </button>
+          <OutputDeviceSelect value={outputDeviceId} onChange={onOutputDeviceChange} />
           {poppedOut ? (
             <>
               <button onClick={onPopOut} className={headerBtn}>창 앞으로</button>

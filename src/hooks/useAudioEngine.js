@@ -27,10 +27,24 @@ export function useAudioEngine({ mappingsRef, sfxVolumeRef }) {
     inGain.connect(limiter);
     limiter.connect(ctx.destination);
     const sfxBus = ctx.createGain(); sfxBus.connect(inGain);
-    const bgmBus = ctx.createGain(); bgmBus.connect(inGain);
-    masterRef.current = { inGain, limiter, sfxBus, bgmBus };
+    // 덕킹(멘트 중 BGM 줄이기) 전용 게인: BGM 버스만 이 노드를 거쳐 마스터로 간다.
+    const duck = ctx.createGain();
+    duck.gain.value = duckRef.current ? DUCK_LEVEL : 1;
+    const bgmBus = ctx.createGain(); bgmBus.connect(duck); duck.connect(inGain);
+    masterRef.current = { inGain, limiter, sfxBus, bgmBus, duck };
     return masterRef.current;
   };
+
+  // 멘트 중 덕킹: 켜면 BGM 전체가 약 -12dB(25%)로 부드럽게 내려가고, 끄면 원복된다.
+  const DUCK_LEVEL = 0.25;
+  const duckRef = useRef(false);
+  const setBgmDuck = useCallback((on) => {
+    duckRef.current = !!on;
+    const ctx = audioCtxRef.current;
+    const m = masterRef.current;
+    if (!ctx || !m?.duck) return;
+    m.duck.gain.setTargetAtTime(on ? DUCK_LEVEL : 1.0, ctx.currentTime, 0.15);
+  }, []);
   const channelOut = (ctx, code, kind) => {
     const m = ensureMaster(ctx);
     let entry = channelRef.current.get(code);
@@ -66,6 +80,13 @@ export function useAudioEngine({ mappingsRef, sfxVolumeRef }) {
     try { if ('audioSession' in navigator) navigator.audioSession.type = 'playback'; } catch (e) {}
     if (!audioCtxRef.current) {
       audioCtxRef.current = new (window.AudioContext || window.webkitAudioContext)();
+      // 저장된 출력 장치 선택이 있으면 새 컨텍스트에 바로 적용 (Chrome 계열 setSinkId)
+      try {
+        const savedDevice = localStorage.getItem('soundboard_output_device');
+        if (savedDevice && typeof audioCtxRef.current.setSinkId === 'function') {
+          audioCtxRef.current.setSinkId(savedDevice).catch(() => {});
+        }
+      } catch { /* ignore */ }
     }
     if (audioCtxRef.current.state !== 'running') audioCtxRef.current.resume();
     return audioCtxRef.current;
@@ -452,6 +473,7 @@ export function useAudioEngine({ mappingsRef, sfxVolumeRef }) {
     getPlayingSfxCodes,
     getPlaybackInfo,
     handlePanicStop,
+    setBgmDuck,
     applyLiveSetting,
   };
 }
