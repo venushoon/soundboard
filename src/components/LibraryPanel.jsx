@@ -327,7 +327,7 @@ export default function LibraryPanel({
         </div>
       )}
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 items-start">
         {visible.map(sound => {
           const assigned = assignedBy[sound.id];
           const compatibleKeys = mappings.filter(m => m.type === sound.type);
