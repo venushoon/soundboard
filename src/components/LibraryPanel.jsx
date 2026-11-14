@@ -107,6 +107,13 @@ export default function LibraryPanel({
   const [uploadType, setUploadType] = useState('sfx');
   const [uploadCatId, setUploadCatId] = useState('');
   const [playingId, setPlayingId] = useState(null);
+  // 사운드별 세부 설정 접기/펼치기 (기본은 접힘, 여러 개를 동시에 펼칠 수 있다)
+  const [expandedIds, setExpandedIds] = useState(() => new Set());
+  const toggleExpanded = (id) => setExpandedIds(prev => {
+    const next = new Set(prev);
+    if (next.has(id)) next.delete(id); else next.add(id);
+    return next;
+  });
   const [analyzing, setAnalyzing] = useState(false);
   const [pendingDeleteSound, setPendingDeleteSound] = useState(null);
   const [pendingDeleteCategory, setPendingDeleteCategory] = useState(null);
@@ -324,6 +331,12 @@ export default function LibraryPanel({
         {visible.map(sound => {
           const assigned = assignedBy[sound.id];
           const compatibleKeys = mappings.filter(m => m.type === sound.type);
+          const expanded = expandedIds.has(sound.id);
+          // 기본값에서 바꾼 세부 설정이 있으면 접힌 카드에도 표시한다
+          const detailParts = [];
+          if ((sound.startSec || 0) > 0 || sound.endSec != null) detailParts.push('구간');
+          if ((sound.fadeInSec || 0) > 0 || (sound.fadeOutSec || 0) > 0) detailParts.push('페이드');
+          if ((sound.trimDb || 0) !== 0) detailParts.push(`미세 조정 ${fmtDb(sound.trimDb)}`);
           return (
             <div key={sound.id} className="bg-[#2a303c] border border-slate-600/30 rounded-xl p-3 flex flex-col gap-2">
               <div className="flex items-start gap-2">
@@ -341,6 +354,23 @@ export default function LibraryPanel({
               {assigned
                 ? <div className="text-[11px] text-emerald-300 bg-emerald-400/10 rounded px-2 py-1">⌨️ 자판 <b>{assigned.keyLabel}</b> 키에 배치됨</div>
                 : <div className="text-[11px] text-slate-500">자판에 배치되지 않음</div>}
+              <div className="flex items-center gap-2 text-[11px]">
+                {typeof sound.loudnessLufs === 'number'
+                  ? <span className="text-sky-300 font-semibold whitespace-nowrap">🔊 {sound.loudnessLufs.toFixed(1)} LUFS · 보정 {fmtDb(sound.gainDb)}</span>
+                  : <span className="text-slate-500 whitespace-nowrap">🔇 음량 미분석</span>}
+                {detailParts.length > 0 && (
+                  <span className="text-amber-300 bg-amber-400/10 rounded px-1.5 py-0.5 whitespace-nowrap" title="기본값에서 바꾼 세부 설정이 있습니다">⚙️ {detailParts.join(' · ')}</span>
+                )}
+                <button
+                  onClick={() => toggleExpanded(sound.id)}
+                  aria-expanded={expanded}
+                  className="ml-auto text-[11px] font-bold px-2 py-1 rounded bg-slate-700 hover:bg-slate-600 text-slate-200 whitespace-nowrap"
+                >
+                  {expanded ? '접기 ▴' : '⚙️ 세부 설정 ▾'}
+                </button>
+              </div>
+              {expanded && (
+                <>
               <SoundVolumeRow sound={sound} onRefresh={onRefresh} showToast={showToast} />
               <SoundPlayRow sound={sound} onRefresh={onRefresh} showToast={showToast} />
               <div className="flex flex-wrap gap-1.5 mt-auto">
@@ -363,6 +393,8 @@ export default function LibraryPanel({
                 <button onClick={() => handleDownload(sound)} title="다운로드" className="text-xs px-2 py-1.5 rounded bg-slate-700 hover:bg-slate-600">⬇️</button>
                 <button onClick={() => handleDeleteSound(sound)} className="text-xs px-2 py-1.5 rounded bg-rose-900/60 hover:bg-rose-700 text-rose-200">삭제</button>
               </div>
+                </>
+              )}
             </div>
           );
         })}
