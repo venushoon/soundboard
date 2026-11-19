@@ -472,7 +472,10 @@ export function useAudioEngine({ mappingsRef, sfxVolumeRef }) {
       }
     }
     const sfxData = sfxNodesRef.current.get(code);
-    if (sfxData && setting === 'volume' && sfxData.gainNode) {
+    if (sfxData && setting === 'volume' && sfxData.gainNode && !sfxData.stopping) {
+      // BGM 분기와 동일 정책: 예약된 페이드 램프를 정리하고 페이더 값을 즉시 적용한다.
+      // stopping(페이드아웃 중)인 노드는 건드리지 않는다 — 꺼져 가는 소리가 되살아나지 않게.
+      if (audioCtxRef.current) sfxData.gainNode.gain.cancelScheduledValues(audioCtxRef.current.currentTime);
       sfxData.gainNode.gain.value = sfxVolumeRef.current * value * sg;
     }
   }, [sfxVolumeRef, mappingsRef]);

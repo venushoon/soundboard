@@ -59,7 +59,7 @@ export default function MixerWindow({
           <button
             onClick={onToggleDuck}
             aria-pressed={!!isDucking}
-            title="멘트 중 BGM 줄이기 (단축키 D) — 켜면 BGM이 약 25%로 부드럽게 내려갑니다"
+            title="멘트 중 BGM 줄이기 (단축키 `) — 켜면 BGM이 약 25%로 부드럽게 내려갑니다"
             className={`px-3 py-1.5 rounded-lg text-xs font-extrabold border-b-4 active:border-b-0 active:translate-y-0.5 transition-all ${isDucking ? 'bg-amber-500 border-amber-700 text-white' : 'bg-slate-700 border-slate-900 text-slate-300 hover:bg-slate-600'}`}
           >
             🎙️ 멘트 중

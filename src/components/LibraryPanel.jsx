@@ -152,8 +152,12 @@ export default function LibraryPanel({
     }
     setPlayingId(null);
   };
-  // 화면을 떠나면 미리듣기를 정지한다 (긴 배경음악 미리듣기가 자판 화면까지 따라오지 않게)
-  useEffect(() => () => { stopPreview(); }, []);
+  // 화면을 떠나면 미리듣기를 정지하고 전용 AudioContext도 닫는다 — 왕복할 때마다
+  // 컨텍스트가 쌓이면 브라우저의 동시 AudioContext 상한에 걸릴 수 있다.
+  useEffect(() => () => {
+    stopPreview();
+    if (ctxRef.current) { ctxRef.current.close().catch(() => {}); ctxRef.current = null; }
+  }, []);
   // 미리듣기도 자판과 동일하게 사운드 보정 게인(gainDb)을 적용해 재생한다 (HTMLAudio는 1.0 초과 증폭 불가라 WebAudio 사용)
   const togglePreview = async (sound) => {
     if (playingId === sound.id) { stopPreview(); return; }
