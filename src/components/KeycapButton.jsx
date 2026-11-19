@@ -1,10 +1,12 @@
-import { memo, useRef } from 'react';
+import { memo, useRef, useState } from 'react';
+import { KEY_COLORS } from '../constants.js';
 
 const KeycapButton = memo(({
   sound, isActive, isEditMode, bgmUIState, isCueTarget,
   onAction, onFileUpload, onSettingChange, onDelete,
 }) => {
   const fileInputRef = useRef(null);
+  const [paletteOpen, setPaletteOpen] = useState(false);
   const hasAudio = !!sound.audioBuffer;
   const canPlay = !isEditMode && hasAudio && !sound.isDecoding;
 
@@ -63,6 +65,34 @@ const KeycapButton = memo(({
                 className="w-full h-1 bg-slate-600 rounded-lg appearance-none cursor-pointer accent-emerald-400"
               />
             </div>
+            <div className="flex items-center gap-1.5 px-0.5">
+              <span className="text-[8px] text-slate-400 font-medium">색상</span>
+              <button
+                type="button"
+                title="키 색상 선택"
+                aria-label={`${sound.soundLabel} 키 색상 선택`}
+                aria-expanded={paletteOpen}
+                onClick={() => setPaletteOpen(o => !o)}
+                className={`w-3.5 h-3.5 rounded-full ring-1 ring-white/40 ${sound.color || 'bg-slate-700'}`}
+              />
+            </div>
+            {paletteOpen && (
+              <div className="flex items-center justify-center gap-[3px] px-0.5" role="group" aria-label={`${sound.soundLabel} 키 색상`}>
+                {KEY_COLORS.map(c => (
+                  <button
+                    key={c.cls}
+                    type="button"
+                    title={`키 색상: ${c.label}`}
+                    aria-label={`키 색상 ${c.label}`}
+                    aria-pressed={sound.color === c.cls}
+                    onClick={() => { onSettingChange(sound.code, 'color', c.cls); setPaletteOpen(false); }}
+                    className={`w-3 h-3 sm:w-3.5 sm:h-3.5 rounded-full ${c.cls} transition-transform ${
+                      sound.color === c.cls ? 'ring-2 ring-white scale-110' : 'opacity-60 hover:opacity-100'
+                    }`}
+                  />
+                ))}
+              </div>
+            )}
           </div>
 
           <div className="flex gap-1 h-[22px]">
