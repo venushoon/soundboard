@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { dbToGain } from '../constants.js';
-import { STORAGE_MODE } from '../storage/api.js';
+import { api, STORAGE_MODE } from '../storage/api.js';
 import ConfirmDialog from './ConfirmDialog.jsx';
 
 const fmtDb = (v) => `${(v ?? 0) > 0 ? '+' : ''}${(v ?? 0).toFixed(1)}dB`;
@@ -164,9 +164,11 @@ export default function LibraryPanel({
       if (ctx.state === 'suspended') await ctx.resume();
       let buf = bufferCacheRef.current.get(sound.id);
       if (!buf) {
-        const res = await fetch(sound.url);
-        if (!res.ok) throw new Error('load failed');
-        buf = await ctx.decodeAudioData(await res.arrayBuffer());
+        // 저장 모드 공통 경로로 원본을 가져온다. 로컬 모드는 sound.url이 비어 있어
+        // 직접 fetch하면 페이지 HTML을 받아 디코딩이 실패한다 (Pages 미리듣기 버그).
+        const blob = await api.fetchSoundBlob(sound.id);
+        if (!blob) throw new Error('load failed');
+        buf = await ctx.decodeAudioData(await blob.arrayBuffer());
         bufferCacheRef.current.set(sound.id, buf);
       }
       const src = ctx.createBufferSource();
@@ -389,7 +391,7 @@ export default function LibraryPanel({
                   className="bg-slate-800 text-xs px-2 py-1.5 rounded border border-slate-600 flex-grow"
                 >
                   <option value="">⌨️ 자판에 배치…</option>
-                  {compatibleKeys.map(m => <option key={m.code} value={m.code}>{m.keyLabel} — {m.soundLabel}{m.soundId ? ' (교체)' : ''}</option>)}
+                  {compatibleKeys.map(m => <option key={m.code} value={m.code}>{m.keyLabel} — {m.soundId ? `${m.soundLabel} (교체)` : '비어있음'}</option>)}
                 </select>
                 <select
                   value={sound.categoryId} aria-label={`${sound.name} 폴더 이동`}

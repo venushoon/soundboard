@@ -497,14 +497,14 @@ export default function CuePlayerWindow({
               <optgroup label="BGM (숫자 키패드)">
                 {mappings.filter(s => s.type === 'bgm').map(s => (
                   <option key={s.code} value={s.code}>
-                    [{s.keyLabel}] {s.soundLabel} {s.audioBuffer ? '✓' : '(미등록)'}
+                    [{s.keyLabel}] {s.soundId ? s.soundLabel : '비어있음'} {s.audioBuffer ? '✓' : '(미등록)'}
                   </option>
                 ))}
               </optgroup>
               <optgroup label="SFX (효과음 자판)">
                 {mappings.filter(s => s.type === 'sfx').map(s => (
                   <option key={s.code} value={s.code}>
-                    [{s.keyLabel}] {s.soundLabel} {s.audioBuffer ? '✓' : '(미등록)'}
+                    [{s.keyLabel}] {s.soundId ? s.soundLabel : '비어있음'} {s.audioBuffer ? '✓' : '(미등록)'}
                   </option>
                 ))}
               </optgroup>
