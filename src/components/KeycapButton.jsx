@@ -103,7 +103,7 @@ const KeycapButton = memo(({
             relative w-full h-full rounded-xl flex flex-col items-center justify-center p-2
             transition-all duration-75 select-none outline-none
             focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-2 focus-visible:ring-offset-[#1e232a]
-            ${!hasAudio ? 'bg-slate-800 border-2 border-dashed border-slate-600 opacity-60 shadow-none mt-1' : 'bg-slate-700 border border-slate-700/50'}
+            ${!hasAudio ? 'bg-slate-800 border-2 border-dashed border-slate-600 opacity-60 shadow-none mt-1' : `border border-slate-700/50 ${sound.color}`}
             ${hasAudio && !isActive ? 'shadow-[0_6px_0_rgba(0,0,0,0.6),0_8px_10px_rgba(0,0,0,0.4)] transform -translate-y-1' : ''}
             ${isActive && hasAudio && !sound.isDecoding ? 'shadow-[0_1px_0_rgba(0,0,0,0.8)] transform translate-y-1 brightness-90' : ''}
             ${bgmUIState === 'playing' ? 'ring-2 ring-green-400 shadow-[0_0_15px_rgba(74,222,128,0.5),0_6px_0_rgba(0,0,0,0.6)]' : ''}
