@@ -1,5 +1,4 @@
 import { memo, useRef } from 'react';
-import { KEY_COLORS } from '../constants.js';
 
 const KeycapButton = memo(({
   sound, isActive, isEditMode, bgmUIState, isCueTarget,
@@ -64,21 +63,6 @@ const KeycapButton = memo(({
                 className="w-full h-1 bg-slate-600 rounded-lg appearance-none cursor-pointer accent-emerald-400"
               />
             </div>
-            <div className="flex items-center justify-center gap-[3px] px-0.5" role="group" aria-label={`${sound.soundLabel} 키 색상`}>
-              {KEY_COLORS.map(c => (
-                <button
-                  key={c.cls}
-                  type="button"
-                  title={`키 색상: ${c.label}`}
-                  aria-label={`키 색상 ${c.label}`}
-                  aria-pressed={sound.color === c.cls}
-                  onClick={() => onSettingChange(sound.code, 'color', c.cls)}
-                  className={`w-3 h-3 sm:w-3.5 sm:h-3.5 rounded-full ${c.cls} transition-transform ${
-                    sound.color === c.cls ? 'ring-2 ring-white scale-110' : 'opacity-60 hover:opacity-100'
-                  }`}
-                />
-              ))}
-            </div>
           </div>
 
           <div className="flex gap-1 h-[22px]">
@@ -119,7 +103,7 @@ const KeycapButton = memo(({
             relative w-full h-full rounded-xl flex flex-col items-center justify-center p-2
             transition-all duration-75 select-none outline-none
             focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-2 focus-visible:ring-offset-[#1e232a]
-            ${!hasAudio ? 'bg-slate-800 border-2 border-dashed border-slate-600 opacity-60 shadow-none mt-1' : `border border-slate-700/50 ${sound.color}`}
+            ${!hasAudio ? 'bg-slate-800 border-2 border-dashed border-slate-600 opacity-60 shadow-none mt-1' : 'bg-slate-700 border border-slate-700/50'}
             ${hasAudio && !isActive ? 'shadow-[0_6px_0_rgba(0,0,0,0.6),0_8px_10px_rgba(0,0,0,0.4)] transform -translate-y-1' : ''}
             ${isActive && hasAudio && !sound.isDecoding ? 'shadow-[0_1px_0_rgba(0,0,0,0.8)] transform translate-y-1 brightness-90' : ''}
             ${bgmUIState === 'playing' ? 'ring-2 ring-green-400 shadow-[0_0_15px_rgba(74,222,128,0.5),0_6px_0_rgba(0,0,0,0.6)]' : ''}
