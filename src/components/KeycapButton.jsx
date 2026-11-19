@@ -75,31 +75,6 @@ const KeycapButton = memo(({
                 onClick={() => setPaletteOpen(o => !o)}
                 className={`w-3.5 h-3.5 rounded-full ring-1 ring-white/40 ${sound.color || 'bg-slate-700'}`}
               />
-              {paletteOpen && (
-                <>
-                  <div className="fixed inset-0 z-40 cursor-default" onClick={() => setPaletteOpen(false)} />
-                  <div
-                    className="absolute left-1/2 top-full z-50 mt-1.5 -translate-x-1/2 rounded-xl border border-slate-600 bg-slate-900 p-2 shadow-2xl"
-                    role="group" aria-label={`${sound.soundLabel} 키 색상`}
-                  >
-                    <div className="grid grid-cols-6 gap-1.5">
-                      {KEY_COLORS.map(c => (
-                        <button
-                          key={c.cls}
-                          type="button"
-                          title={c.label}
-                          aria-label={`키 색상 ${c.label}`}
-                          aria-pressed={sound.color === c.cls}
-                          onClick={() => { onSettingChange(sound.code, 'color', c.cls); setPaletteOpen(false); }}
-                          className={`w-4 h-4 rounded-full ${c.cls} transition-transform ${
-                            sound.color === c.cls ? 'ring-2 ring-white scale-110' : 'opacity-70 hover:opacity-100 hover:scale-110'
-                          }`}
-                        />
-                      ))}
-                    </div>
-                  </div>
-                </>
-              )}
             </div>
           </div>
 
@@ -174,6 +149,43 @@ const KeycapButton = memo(({
             )}
           </div>
         </button>
+      )}
+
+      {isEditMode && paletteOpen && (
+        <>
+          <div className="fixed inset-0 z-40 cursor-default" onClick={() => setPaletteOpen(false)} />
+          <div
+            className="absolute inset-x-0 bottom-0 z-50 rounded-lg border border-slate-500 bg-slate-900 p-2 shadow-2xl"
+            role="group" aria-label={`${sound.soundLabel} 키 색상`}
+          >
+            <div className="mb-1.5 flex items-center justify-between">
+              <span className="text-[9px] font-semibold text-slate-300">키 색상</span>
+              <button
+                type="button"
+                aria-label="색상 선택 닫기"
+                onClick={() => setPaletteOpen(false)}
+                className="text-[10px] leading-none text-slate-400 hover:text-white"
+              >
+                ✕
+              </button>
+            </div>
+            <div className="grid grid-cols-4 justify-items-center gap-1.5">
+              {KEY_COLORS.map(c => (
+                <button
+                  key={c.cls}
+                  type="button"
+                  title={c.label}
+                  aria-label={`키 색상 ${c.label}`}
+                  aria-pressed={sound.color === c.cls}
+                  onClick={() => { onSettingChange(sound.code, 'color', c.cls); setPaletteOpen(false); }}
+                  className={`h-4 w-4 rounded-full ${c.cls} transition-transform ${
+                    sound.color === c.cls ? 'ring-2 ring-white scale-110' : 'opacity-70 hover:opacity-100 hover:scale-110'
+                  }`}
+                />
+              ))}
+            </div>
+          </div>
+        </>
       )}
     </div>
   );
