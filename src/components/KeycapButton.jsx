@@ -65,7 +65,7 @@ const KeycapButton = memo(({
                 className="w-full h-1 bg-slate-600 rounded-lg appearance-none cursor-pointer accent-emerald-400"
               />
             </div>
-            <div className="flex items-center gap-1.5 px-0.5">
+            <div className="relative flex items-center gap-1.5 px-0.5">
               <span className="text-[8px] text-slate-400 font-medium">색상</span>
               <button
                 type="button"
@@ -75,24 +75,32 @@ const KeycapButton = memo(({
                 onClick={() => setPaletteOpen(o => !o)}
                 className={`w-3.5 h-3.5 rounded-full ring-1 ring-white/40 ${sound.color || 'bg-slate-700'}`}
               />
+              {paletteOpen && (
+                <>
+                  <div className="fixed inset-0 z-40 cursor-default" onClick={() => setPaletteOpen(false)} />
+                  <div
+                    className="absolute left-1/2 top-full z-50 mt-1.5 -translate-x-1/2 rounded-xl border border-slate-600 bg-slate-900 p-2 shadow-2xl"
+                    role="group" aria-label={`${sound.soundLabel} 키 색상`}
+                  >
+                    <div className="grid grid-cols-6 gap-1.5">
+                      {KEY_COLORS.map(c => (
+                        <button
+                          key={c.cls}
+                          type="button"
+                          title={c.label}
+                          aria-label={`키 색상 ${c.label}`}
+                          aria-pressed={sound.color === c.cls}
+                          onClick={() => { onSettingChange(sound.code, 'color', c.cls); setPaletteOpen(false); }}
+                          className={`w-4 h-4 rounded-full ${c.cls} transition-transform ${
+                            sound.color === c.cls ? 'ring-2 ring-white scale-110' : 'opacity-70 hover:opacity-100 hover:scale-110'
+                          }`}
+                        />
+                      ))}
+                    </div>
+                  </div>
+                </>
+              )}
             </div>
-            {paletteOpen && (
-              <div className="flex items-center justify-center gap-[3px] px-0.5" role="group" aria-label={`${sound.soundLabel} 키 색상`}>
-                {KEY_COLORS.map(c => (
-                  <button
-                    key={c.cls}
-                    type="button"
-                    title={`키 색상: ${c.label}`}
-                    aria-label={`키 색상 ${c.label}`}
-                    aria-pressed={sound.color === c.cls}
-                    onClick={() => { onSettingChange(sound.code, 'color', c.cls); setPaletteOpen(false); }}
-                    className={`w-3 h-3 sm:w-3.5 sm:h-3.5 rounded-full ${c.cls} transition-transform ${
-                      sound.color === c.cls ? 'ring-2 ring-white scale-110' : 'opacity-60 hover:opacity-100'
-                    }`}
-                  />
-                ))}
-              </div>
-            )}
           </div>
 
           <div className="flex gap-1 h-[22px]">
