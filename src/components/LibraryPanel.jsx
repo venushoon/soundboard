@@ -152,6 +152,8 @@ export default function LibraryPanel({
     }
     setPlayingId(null);
   };
+  // 화면을 떠나면 미리듣기를 정지한다 (긴 배경음악 미리듣기가 자판 화면까지 따라오지 않게)
+  useEffect(() => () => { stopPreview(); }, []);
   // 미리듣기도 자판과 동일하게 사운드 보정 게인(gainDb)을 적용해 재생한다 (HTMLAudio는 1.0 초과 증폭 불가라 WebAudio 사용)
   const togglePreview = async (sound) => {
     if (playingId === sound.id) { stopPreview(); return; }
@@ -286,12 +288,12 @@ export default function LibraryPanel({
           🎭 공연 모드에서는 라이브러리를 수정할 수 없습니다. 수정하려면 상단에서 설정 모드로 전환하세요.
         </div>
       )}
-      <fieldset disabled={readOnly} className={`flex flex-col gap-4 border-0 p-0 m-0 min-w-0 ${readOnly ? 'opacity-70' : ''}`}>
       <div className="flex flex-wrap items-center gap-2 bg-[#2a303c] border border-slate-600/30 rounded-xl p-3">
         <input
           value={query} onChange={(e) => setQuery(e.target.value)} placeholder="🔍 사운드 검색"
           className="bg-slate-800 text-sm px-3 py-2 rounded-lg border border-slate-600 focus:outline-none focus:border-emerald-400 w-44"
         />
+        <fieldset disabled={readOnly} className="flex flex-wrap items-center gap-2 border-0 p-0 m-0 min-w-0">
         <select value={uploadType} onChange={(e) => setUploadType(e.target.value)} className="bg-slate-800 text-sm px-2 py-2 rounded-lg border border-slate-600" aria-label="업로드 종류">
           <option value="sfx">효과음</option>
           <option value="bgm">배경음악</option>
@@ -307,6 +309,7 @@ export default function LibraryPanel({
         <button onClick={handleAnalyzeAll} disabled={analyzing} className="px-4 py-2 rounded-lg bg-sky-700 hover:bg-sky-600 disabled:opacity-50 text-white text-sm font-bold">
           {analyzing ? '🎚️ 분석 중…' : '🎚️ 전체 음량 균일화'}
         </button>
+        </fieldset>
         <span className="text-xs text-slate-400 ml-auto">총 {sounds.length}개 · {STORAGE_MODE === 'local' ? '브라우저 저장 (이 브라우저에만 유지)' : '서버 저장 (브라우저를 바꿔도 유지)'}{STORAGE_MODE === 'local' && storageUsage != null ? ` · 사용 중 약 ${Math.max(1, Math.round(storageUsage / 1048576))}MB` : ''}</span>
       </div>
 
@@ -317,13 +320,13 @@ export default function LibraryPanel({
         {categories.map(cat => (
           <span key={cat.id} className={`inline-flex items-center gap-1 px-3 py-1.5 rounded-full text-sm font-bold ${activeCat === cat.id ? 'bg-emerald-500 text-white' : 'bg-slate-700 text-slate-300'}`}>
             <button onClick={() => setActiveCat(cat.id)}>📁 {cat.name} ({sounds.filter(s => s.categoryId === cat.id).length})</button>
-            <button onClick={() => handleRenameCategory(cat)} title="이름 변경" className="opacity-70 hover:opacity-100">✏️</button>
-            <button onClick={() => handleDeleteCategory(cat)} title="폴더 삭제 (사운드는 미분류로 이동)" className="opacity-70 hover:opacity-100">🗑️</button>
+            <button onClick={() => handleRenameCategory(cat)} disabled={readOnly} title="이름 변경" className="opacity-70 hover:opacity-100 disabled:opacity-30 disabled:cursor-not-allowed">✏️</button>
+            <button onClick={() => handleDeleteCategory(cat)} disabled={readOnly} title="폴더 삭제 (사운드는 미분류로 이동)" className="opacity-70 hover:opacity-100 disabled:opacity-30 disabled:cursor-not-allowed">🗑️</button>
           </span>
         ))}
         <span className="inline-flex gap-1 ml-2">
-          <input value={newCatName} onChange={(e) => setNewCatName(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleCreateCategory()} placeholder="새 폴더 이름 (예: 효과음)" className="bg-slate-800 text-sm px-3 py-1.5 rounded-full border border-slate-600 focus:outline-none focus:border-emerald-400 w-44" />
-          <button onClick={handleCreateCategory} className="px-3 py-1.5 rounded-full bg-blue-600 hover:bg-blue-500 text-white text-sm font-bold">+ 폴더</button>
+          <input value={newCatName} onChange={(e) => setNewCatName(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleCreateCategory()} disabled={readOnly} placeholder="새 폴더 이름 (예: 효과음)" className="bg-slate-800 text-sm px-3 py-1.5 rounded-full border border-slate-600 focus:outline-none focus:border-emerald-400 w-44 disabled:opacity-50" />
+          <button onClick={handleCreateCategory} disabled={readOnly} className="px-3 py-1.5 rounded-full bg-blue-600 hover:bg-blue-500 text-white text-sm font-bold disabled:opacity-50 disabled:cursor-not-allowed">+ 폴더</button>
         </span>
       </div>
 
@@ -376,7 +379,7 @@ export default function LibraryPanel({
                 </button>
               </div>
               {expanded && (
-                <>
+                <fieldset disabled={readOnly} className="flex flex-col gap-2 border-0 p-0 m-0 min-w-0">
               <SoundVolumeRow sound={sound} onRefresh={onRefresh} showToast={showToast} />
               <SoundPlayRow sound={sound} onRefresh={onRefresh} showToast={showToast} />
               <div className="flex flex-wrap gap-1.5 mt-auto">
@@ -399,13 +402,12 @@ export default function LibraryPanel({
                 <button onClick={() => handleDownload(sound)} title="다운로드" className="text-xs px-2 py-1.5 rounded bg-slate-700 hover:bg-slate-600">⬇️</button>
                 <button onClick={() => handleDeleteSound(sound)} className="text-xs px-2 py-1.5 rounded bg-rose-900/60 hover:bg-rose-700 text-rose-200">삭제</button>
               </div>
-                </>
+                </fieldset>
               )}
             </div>
           );
         })}
       </div>
-      </fieldset>
       <ConfirmDialog
         open={Boolean(pendingDeleteSound)}
         title="사운드 삭제"

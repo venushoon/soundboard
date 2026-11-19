@@ -351,13 +351,21 @@ export function useCueList({ mappingsRef, playSfx, handleBGMPlayback, fadeOutBGM
   }, [onRemoveLocalCodes, clearItemTimers]);
 
   const moveCue = useCallback((idx, dir) => {
-    setCueListRaw(prev => {
-      const next = [...prev];
-      const target = idx + dir;
-      if (target < 0 || target >= next.length) return prev;
-      [next[idx], next[target]] = [next[target], next[idx]];
-      return next;
-    });
+    const current = cueListRef.current;
+    const target = idx + dir;
+    if (target < 0 || target >= current.length) return;
+    const next = [...current];
+    [next[idx], next[target]] = [next[target], next[idx]];
+    cueListRef.current = next;
+    setCueListRaw(next);
+    // GO 포인터가 스왑된 큐 중 하나를 가리키고 있으면 그 큐를 따라 함께 이동한다
+    // (removeCue의 인덱스 보정과 같은 이유 — 포인터가 엉뚱한 큐를 가리키면 안 된다)
+    const ci = cueIndexRef.current;
+    const nextCi = ci === idx ? target : ci === target ? idx : ci;
+    if (nextCi !== ci) {
+      cueIndexRef.current = nextCi;
+      setCueIndex(nextCi);
+    }
   }, []);
 
   const clearCueList = useCallback(() => {

@@ -262,7 +262,7 @@ const MixerPanel = (props) => {
           <button
             onClick={onToggleDuck}
             aria-pressed={!!isDucking}
-            title="멘트 중 BGM 줄이기 (단축키 D) — 켜면 BGM이 약 25%로 부드럽게 내려갑니다"
+            title="멘트 중 BGM 줄이기 (단축키 `) — 켜면 BGM이 약 25%로 부드럽게 내려갑니다"
             className={isDucking
               ? 'px-3 py-1.5 rounded-lg text-xs font-extrabold bg-amber-500 border-b-4 border-amber-700 text-white active:border-b-0 active:translate-y-0.5 transition-all'
               : headerBtn}

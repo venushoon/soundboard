@@ -705,7 +705,7 @@ const SoundBoard = () => {
         triggerNextCue();
         return;
       }
-      if (e.code === 'KeyD') { e.preventDefault(); toggleDuck(); return; }
+      if (e.code === 'Backquote') { e.preventDefault(); toggleDuck(); return; }
       if (e.repeat) return;
       handleSoundAction(e.code, true);
     };
@@ -738,7 +738,7 @@ const SoundBoard = () => {
       triggerNextCue();
       return;
     }
-    if (e.code === 'KeyD') {
+    if (e.code === 'Backquote') {
       e.preventDefault();
       toggleDuck();
       return;

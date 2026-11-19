@@ -195,6 +195,8 @@ export function useAudioEngine({ mappingsRef, sfxVolumeRef }) {
         const elapsed = ctx.currentTime - nodeData.startTime;
         nodeData.source.onended = null;
         try { nodeData.source.stop(); } catch (e) {}
+        // 진행 중이던 페이드인 램프를 정리한다 — 남겨 두면 재개 때 게인과 간섭한다
+        nodeData.gainNode.gain.cancelScheduledValues(ctx.currentTime);
         nodeData.startOffset += elapsed;
         nodeData.state = 'paused';
         syncBGMStateToUI();
@@ -205,6 +207,7 @@ export function useAudioEngine({ mappingsRef, sfxVolumeRef }) {
         newSource.buffer = nodeData.buffer;
         newSource.loop = currentSoundObj.loop;
         newSource.connect(nodeData.gainNode);
+        nodeData.gainNode.gain.cancelScheduledValues(ctx.currentTime);
         nodeData.gainNode.gain.value = currentSoundObj.volume * soundGainOf(currentSoundObj);
 
         const segStart = nodeData.segStart ?? 0;
@@ -288,6 +291,9 @@ export function useAudioEngine({ mappingsRef, sfxVolumeRef }) {
       newSource.loopStart = segStart;
       newSource.loopEnd = segStart + segDur;
       newSource.connect(nodeData.gainNode);
+      // 이전 페이드 램프(인/아웃)가 남아 있으면 새 재생 게인과 간섭하므로 정리하고 정격으로 맞춘다
+      nodeData.gainNode.gain.cancelScheduledValues(ctx.currentTime);
+      if (sound) nodeData.gainNode.gain.value = sound.volume * soundGainOf(sound);
       newSource.onended = () => stopBGM(code);
       if (newSource.loop) newSource.start(0, segStart + clampedTime);
       else newSource.start(0, segStart + clampedTime, Math.max(0.01, segDur - clampedTime));
@@ -296,6 +302,8 @@ export function useAudioEngine({ mappingsRef, sfxVolumeRef }) {
       nodeData.startTime = ctx.currentTime;
       nodeData.state = 'playing';
     } else {
+      // 페이드아웃 중 seek한 경우 남은 램프를 정리한다 (재개 시 게인 간섭 방지)
+      nodeData.gainNode.gain.cancelScheduledValues(ctx.currentTime);
       nodeData.state = 'paused';
     }
 
@@ -455,6 +463,8 @@ export function useAudioEngine({ mappingsRef, sfxVolumeRef }) {
     const nodeData = activeNodesRef.current.get(code);
     if (nodeData) {
       if (setting === 'volume' && nodeData.gainNode && nodeData.state !== 'fading') {
+        // 예약된 페이드 램프가 있으면 취소하고 사용자 값을 즉시 적용한다 (간섭 방지)
+        if (audioCtxRef.current) nodeData.gainNode.gain.cancelScheduledValues(audioCtxRef.current.currentTime);
         nodeData.gainNode.gain.value = value * sg;
       }
       if (setting === 'loop' && nodeData.source) {
