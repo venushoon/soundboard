@@ -16,7 +16,7 @@ import BgmFooter from './components/BgmFooter.jsx';
 import MixerPanel from './components/MixerPanel.jsx';
 import MixerWindow from './components/MixerWindow.jsx';
 import { CueGoBar } from './components/CuePanel.jsx';
-import { ExportImportBar } from './components/EditPanels.jsx';
+import { BackupButtons } from './components/EditPanels.jsx';
 import WindowPortal from './components/WindowPortal.jsx';
 import CuePlayerWindow from './components/CuePlayerWindow.jsx';
 
@@ -1297,15 +1297,6 @@ const SoundBoard = () => {
 
       <main className="flex-grow p-3 lg:p-6 overflow-y-auto overflow-x-auto z-10 custom-scrollbar flex flex-col items-center justify-start">
 
-        {isEditMode && (
-          <ExportImportBar
-            onExport={handleExportSettings}
-            onExportSettingsOnly={handleExportSettingsOnly}
-            onImportSelected={handleImportFileSelected}
-            importInputRef={importInputRef}
-          />
-        )}
-
         {isCueMode && !isEditMode && (
           <CueGoBar
             cueList={cueList}
@@ -1345,10 +1336,22 @@ const SoundBoard = () => {
         <div className={`bg-[#2a303c] p-4 sm:p-6 lg:p-8 rounded-2xl shadow-[inset_0_4px_10px_rgba(255,255,255,0.05),0_15px_25px_rgba(0,0,0,0.5)] border border-slate-600/30 flex-col xl:flex-row flex-wrap gap-6 xl:gap-10 ${view === 'library' ? 'hidden' : 'flex'}`}>
 
           <div>
-            <div className="flex items-center justify-between gap-2 mb-4 ml-2">
+            <div className="flex items-center justify-between gap-2 mb-4 ml-2 flex-wrap">
               <h2 className="text-lg font-bold text-slate-400 flex items-center gap-2">
                 효과음 자판 <span className="text-[10px] font-normal text-emerald-400 bg-emerald-400/10 px-2 py-0.5 rounded">다중 재생</span>
               </h2>
+              <div className="flex items-center gap-3 flex-wrap justify-end">
+                {isEditMode && (
+                  <>
+                    <BackupButtons
+                      onExport={handleExportSettings}
+                      onExportSettingsOnly={handleExportSettingsOnly}
+                      onImportSelected={handleImportFileSelected}
+                      importInputRef={importInputRef}
+                    />
+                    <div className="w-px h-5 bg-slate-600/60" aria-hidden="true" />
+                  </>
+                )}
               <div className="flex items-center gap-1.5" role="group" aria-label="효과음 뱅크 전환">
                 <span className="text-[11px] font-bold text-slate-500">뱅크</span>
                 {['A', 'B'].map(b => (
@@ -1361,6 +1364,7 @@ const SoundBoard = () => {
                     {b} <span className="font-medium opacity-80">{bankAssignedCount(b)}/15</span>
                   </button>
                 ))}
+              </div>
               </div>
             </div>
             <div className="flex flex-col gap-3 sm:gap-4 bg-[#222731] p-4 sm:p-6 rounded-xl shadow-inner border border-black/20">
