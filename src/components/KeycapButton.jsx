@@ -32,7 +32,7 @@ const KeycapButton = memo(({
   };
 
   return (
-    <div className="relative flex flex-col w-24 h-24 sm:w-28 sm:h-28">
+    <div className={`relative flex flex-col w-24 sm:w-28 ${isEditMode ? 'h-28 sm:h-32' : 'h-24 sm:h-28'}`}>
       <input
         type="file" accept="audio/*" ref={fileInputRef} className="hidden"
         onChange={(e) => onFileUpload(sound.code, e)}
@@ -49,11 +49,13 @@ const KeycapButton = memo(({
           <div className="flex flex-col gap-1 mb-1">
             <input
               type="text"
-              value={sound.soundLabel}
+              value={sound.soundId ? sound.soundLabel : '빈 키'}
               onChange={(e) => onSettingChange(sound.code, 'soundLabel', e.target.value)}
-              className="w-full bg-slate-700 text-white text-[10px] sm:text-xs p-1 rounded border border-slate-600 focus:outline-none focus:border-blue-400 text-center"
+              className={`w-full bg-slate-700 text-[10px] sm:text-xs p-1 rounded border border-slate-600 focus:outline-none focus:border-blue-400 text-center ${
+                sound.soundId ? 'text-white' : 'text-slate-400'
+              }`}
               placeholder="효과음 이름"
-              disabled={sound.isDecoding}
+              disabled={sound.isDecoding || !sound.soundId}
             />
             <div className="flex items-center gap-1.5 px-0.5">
               <span className="text-[8px] text-slate-400 font-medium">Vol</span>
