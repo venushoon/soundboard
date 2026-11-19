@@ -16,7 +16,7 @@ import BgmFooter from './components/BgmFooter.jsx';
 import MixerPanel from './components/MixerPanel.jsx';
 import MixerWindow from './components/MixerWindow.jsx';
 import { CueGoBar } from './components/CuePanel.jsx';
-import { ExportImportBar, EditGuideBar } from './components/EditPanels.jsx';
+import { ExportImportBar } from './components/EditPanels.jsx';
 import WindowPortal from './components/WindowPortal.jsx';
 import CuePlayerWindow from './components/CuePlayerWindow.jsx';
 
@@ -68,6 +68,7 @@ const SoundBoard = () => {
   const [pendingDeleteCode, setPendingDeleteCode] = useState(null);
   const [showVolumeResetConfirm, setShowVolumeResetConfirm] = useState(false);
   const [pendingImportFile, setPendingImportFile] = useState(null);
+  const [exportNotice, setExportNotice] = useState(null);
   const [cuePopupWin, setCuePopupWin] = useState(null);
   const [mixerWin, setMixerWin] = useState(null);
   const [view, setView] = useState('board');
@@ -842,6 +843,26 @@ const SoundBoard = () => {
   }, [pendingDeleteCode, handleDeleteSound]);
 
   const exportSettings = useCallback(async (includeFiles = true) => {
+    // 전체 내보내기는 음원이 base64로 들어가 약 1.33배로 커진다 — 100MB를 넘을
+    // 것으로 예상되면 파일을 만들기 전에 팝업으로 안내하고 중단한다.
+    if (includeFiles) {
+      const sizeOf = (id) => (library.sounds || []).find(x => x.id === id)?.size || 0;
+      let totalBytes = 0;
+      for (const s of mappings) if (s.soundId) totalBytes += sizeOf(s.soundId);
+      const otherAssignForSize = (banks[sfxBank === 'A' ? 'B' : 'A'] || []);
+      for (const a of otherAssignForSize) if (a.soundId) totalBytes += sizeOf(a.soundId);
+      for (const item of cueList) {
+        if (item?.soundId && (item.source === 'local' || String(item.code).startsWith('local_'))) totalBytes += sizeOf(item.soundId);
+      }
+      const estimatedBytes = totalBytes * 4 / 3;
+      if (estimatedBytes > 100 * 1024 * 1024) {
+        setExportNotice({
+          title: '⚠️ 내보내기 용량 초과',
+          message: `등록된 음원이 많아 전체 내보내기 파일이 100MB를 넘을 것으로 예상됩니다 (약 ${Math.round(estimatedBytes / 1024 / 1024)}MB). '설정만' 내보내기를 이용하면 음원 없이 배치·볼륨·큐만 가볍게 저장할 수 있습니다.`,
+        });
+        return;
+      }
+    }
     try {
       showToast('내보내기 준비 중...', 'success');
       const soundsExport = await Promise.all(mappings.map(async (s) => {
@@ -913,7 +934,10 @@ const SoundBoard = () => {
       showToast(includeFiles ? '설정을 내보냈습니다' : '설정만 내보냈습니다 (음원 제외)', 'success');
     } catch (e) {
       console.error(e);
-      showToast('내보내기에 실패했습니다', 'error');
+      setExportNotice({
+        title: '내보내기 실패',
+        message: '내보내기 중 문제가 생겼습니다. 음원이 많은 경우 ‘설정만’ 내보내기를 이용해 보세요.',
+      });
     }
   }, [showToast, mappings, cueList, sfxBank, banks, library]);
 
@@ -1201,6 +1225,16 @@ const SoundBoard = () => {
       />
 
       <ConfirmDialog
+        open={!!exportNotice}
+        title={exportNotice?.title || ''}
+        message={exportNotice?.message || ''}
+        confirmLabel="확인"
+        hideCancel
+        onConfirm={() => setExportNotice(null)}
+        onCancel={() => setExportNotice(null)}
+      />
+
+      <ConfirmDialog
         open={showVolumeResetConfirm}
         title="볼륨을 전부 초기화할까요?"
         message="자판에 배치된 모든 채널(효과음 뱅크 A·B + BGM)의 볼륨이 100%로 돌아갑니다. 라이브러리의 사운드별 음량 보정은 그대로 유지됩니다."
@@ -1286,7 +1320,7 @@ const SoundBoard = () => {
           />
         )}
 
-        {isEditMode && <EditGuideBar />}
+
 
         {hasBrowserBackup && view === 'board' && (
           <div className="w-full max-w-5xl bg-amber-900/30 border border-amber-500/40 rounded-lg p-3 mb-4 text-amber-100 flex flex-wrap items-center gap-3">

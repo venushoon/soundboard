@@ -3,7 +3,7 @@ import { useEffect, useRef } from 'react';
 export default function ConfirmDialog({
   open, title, message,
   confirmLabel = '확인', cancelLabel = '취소',
-  danger = false, onConfirm, onCancel,
+  danger = false, hideCancel = false, onConfirm, onCancel,
 }) {
   const confirmBtnRef = useRef(null);
 
@@ -37,13 +37,15 @@ export default function ConfirmDialog({
         <h2 id="confirm-dialog-title" className="text-base font-bold text-white mb-2">{title}</h2>
         <p id="confirm-dialog-desc" className="text-sm text-slate-400 mb-5">{message}</p>
         <div className="flex justify-end gap-2">
-          <button
-            type="button"
-            onClick={onCancel}
-            className="px-4 py-2 rounded-lg text-sm font-medium bg-slate-700 hover:bg-slate-600 text-slate-200 transition-colors"
-          >
-            {cancelLabel}
-          </button>
+          {!hideCancel && (
+            <button
+              type="button"
+              onClick={onCancel}
+              className="px-4 py-2 rounded-lg text-sm font-medium bg-slate-700 hover:bg-slate-600 text-slate-200 transition-colors"
+            >
+              {cancelLabel}
+            </button>
+          )}
           <button
             ref={confirmBtnRef}
             type="button"
