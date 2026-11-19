@@ -854,7 +854,7 @@ const SoundBoard = () => {
           } catch { /* ignore */ }
         }
         const metaName = (library.sounds || []).find(x => x.id === s.soundId)?.name;
-        return { code: s.code, soundLabel: s.soundLabel, soundName: metaName || s.soundLabel || null, loop: s.loop, volume: s.volume, color: s.color || null, fileData, fileType, fadeInSec: s.fadeInSec ?? 0, fadeOutSec: s.fadeOutSec ?? 0, startSec: s.startSec ?? 0, endSec: s.endSec ?? null };
+        return { code: s.code, soundLabel: s.soundLabel, hasSound: !!s.soundId, soundName: s.soundId ? (metaName || null) : null, loop: s.loop, volume: s.volume, color: s.color || null, fileData, fileType, fadeInSec: s.fadeInSec ?? 0, fadeOutSec: s.fadeOutSec ?? 0, startSec: s.startSec ?? 0, endSec: s.endSec ?? null };
       }));
 
       // 로컬 큐 음원 파일들도 함께 백업
@@ -984,14 +984,17 @@ const SoundBoard = () => {
           }
         }
 
+        // hasSound === false가 명시된 항목은 빈 슬롯이다 — 복원 시 기존 음원을 비운다.
+        // (구버전 백업에는 hasSound가 없어 기존 동작(유지)을 따른다.)
+        const explicitlyEmpty = s.hasSound === false;
         setMappings(prev => prev.map(m => m.code === s.code ? {
           ...m,
           soundLabel: s.soundLabel ?? m.soundLabel,
           loop: s.loop ?? m.loop,
           volume: s.volume ?? m.volume,
           color: s.color ?? m.color,
-          audioBuffer: audioBuffer ?? m.audioBuffer,
-          soundId: importedId ?? m.soundId,
+          audioBuffer: explicitlyEmpty ? null : (audioBuffer ?? m.audioBuffer),
+          soundId: explicitlyEmpty ? null : (importedId ?? m.soundId),
         } : m));
       }
 

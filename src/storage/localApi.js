@@ -125,9 +125,17 @@ async function addSound({ blob, categoryName, type, name, isExample = false }) {
 
 // ---------- 시드 ----------
 async function fetchSeedFile(url) {
-  const res = await fetch(url);
-  if (!res.ok) throw new Error(`seed fetch ${res.status}`);
-  return res.blob();
+  // 느리거나 막힌 망(학교망 등)에서 첫 시드 로딩이 늘어지지 않게 8초 타임아웃 —
+  // 초과하면 호출자가 합성 폴백으로 넘어간다.
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), 8000);
+  try {
+    const res = await fetch(url, { signal: ctrl.signal });
+    if (!res.ok) throw new Error(`seed fetch ${res.status}`);
+    return await res.blob();
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 async function realRecordingBlob(kind) {

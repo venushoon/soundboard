@@ -158,7 +158,9 @@ export function useAudioEngine({ mappingsRef, sfxVolumeRef }) {
     nodeData.state = 'fading';
 
     const obj = mappingsRef.current.find(s => s.code === code);
-    const fadeDuration = typeof seconds === 'number' ? seconds : ((obj?.fadeOutSec || 0) > 0 ? obj.fadeOutSec : 2.0);
+    // 재생 시작 때 저장해 둔 그 음원의 페이드 설정을 우선한다 (큐로 재생한 다른 뱅크 음원 대응)
+    const storedFade = (nodeData.fadeOutSec || 0) > 0 ? nodeData.fadeOutSec : 0;
+    const fadeDuration = typeof seconds === 'number' ? seconds : (storedFade || ((obj?.fadeOutSec || 0) > 0 ? obj.fadeOutSec : 2.0));
     const currTime = ctx.currentTime;
     nodeData.gainNode.gain.cancelScheduledValues(currTime);
     nodeData.gainNode.gain.setValueAtTime(nodeData.gainNode.gain.value, currTime);
@@ -173,14 +175,18 @@ export function useAudioEngine({ mappingsRef, sfxVolumeRef }) {
     const nodeData = activeNodesRef.current.get(code);
     if (!nodeData) return;
     const obj = mappingsRef.current.find(s => s.code === code);
-    if (nodeData.state === 'playing' && (obj?.fadeOutSec || 0) > 0.05) fadeOutBGM(code, obj.fadeOutSec);
+    const fadeSec = (nodeData.fadeOutSec || 0) > 0.05 ? nodeData.fadeOutSec : (obj?.fadeOutSec || 0);
+    if (nodeData.state === 'playing' && fadeSec > 0.05) fadeOutBGM(code, fadeSec);
     else stopBGM(code);
   }, [fadeOutBGM, stopBGM, mappingsRef]);
 
   const handleBGMPlayback = useCallback((baseSoundObj, action = 'toggle') => {
     const ctx = initAudioContext();
     if (!ctx) return;
-    const currentSoundObj = mappingsRef.current.find(s => s.code === baseSoundObj.code) || baseSoundObj;
+    // 현재 자판에서 같은 코드를 찾되, 같은 음원일 때만 교체한다 — 큐가 해석해 온
+    // 다른 뱅크의 음원을 현재 뱅크 키의 음원으로 바꿔치기하면 안 된다.
+    const mappedObj = mappingsRef.current.find(s => s.code === baseSoundObj.code);
+    const currentSoundObj = (mappedObj && mappedObj.audioBuffer && (!baseSoundObj.soundId || mappedObj.soundId === baseSoundObj.soundId)) ? mappedObj : baseSoundObj;
     const nodeData = activeNodesRef.current.get(currentSoundObj.code);
 
     if (nodeData) {
@@ -250,7 +256,7 @@ export function useAudioEngine({ mappingsRef, sfxVolumeRef }) {
       activeNodesRef.current.set(currentSoundObj.code, {
         source, gainNode, buffer: currentSoundObj.audioBuffer,
         startTime: ctx.currentTime, startOffset: 0, state: 'playing', timeoutId: null,
-        segStart: seg.start, segEnd: seg.end,
+        segStart: seg.start, segEnd: seg.end, fadeOutSec: currentSoundObj.fadeOutSec || 0,
       });
       syncBGMStateToUI();
     }
@@ -434,6 +440,11 @@ export function useAudioEngine({ mappingsRef, sfxVolumeRef }) {
         if (nodeData.timeoutId) clearTimeout(nodeData.timeoutId);
         if (nodeData.source) { nodeData.source.onended = null; try { nodeData.source.stop(); } catch (e) {} }
       });
+      sfxNodesRef.current.forEach((n) => {
+        if (n.stopTimer) clearTimeout(n.stopTimer);
+        if (n.source) { n.source.onended = null; try { n.source.stop(); } catch (e) {} }
+      });
+      sfxNodesRef.current.clear();
       if (audioCtxRef.current && audioCtxRef.current.state !== 'closed') audioCtxRef.current.close();
     };
   }, []);

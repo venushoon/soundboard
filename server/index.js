@@ -314,6 +314,12 @@ app.delete('/api/sounds/:id', (req, res) => {
   if (p && fs.existsSync(p)) fs.unlinkSync(p);
   db.sounds.splice(idx, 1);
   for (const m of db.board.mappings) if (m.soundId === s.id) m.soundId = null;
+  if (db.board.banks) {
+    for (const b of ['A', 'B']) {
+      const arr = db.board.banks[b];
+      if (Array.isArray(arr)) for (const m of arr) if (m.soundId === s.id) m.soundId = null;
+    }
+  }
   for (const c of db.cueList) if (c.soundId === s.id) c.soundId = null;
   saveDB();
   res.json({ ok: true });
