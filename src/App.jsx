@@ -12,6 +12,7 @@ import { useAudioEngine } from './hooks/useAudioEngine.js';
 import { useCueList } from './hooks/useCueList.js';
 import KeycapButton from './components/KeycapButton.jsx';
 import ConfirmDialog from './components/ConfirmDialog.jsx';
+import KeySettingsModal from './components/KeySettingsModal.jsx';
 import BgmFooter from './components/BgmFooter.jsx';
 import MixerPanel from './components/MixerPanel.jsx';
 import MixerWindow from './components/MixerWindow.jsx';
@@ -62,7 +63,10 @@ const SoundBoard = () => {
   const switchingBankRef = useRef(false);
 
   const [activeKeys, setActiveKeys] = useState(new Set());
-  const [isEditMode, setIsEditMode] = useState(false);
+  const [settingsCode, setSettingsCode] = useState(null);
+  const [locked, setLocked] = useState(() => {
+    try { return localStorage.getItem('soundboard_ui_lock') === '1'; } catch { return false; }
+  });
   const [toast, setToast] = useState(null);
   const [, forceTick] = useState(0);
   const [pendingDeleteCode, setPendingDeleteCode] = useState(null);
@@ -81,10 +85,10 @@ const SoundBoard = () => {
   const importInputRef = useRef(null);
 
   const mappingsRef = useRef(mappings);
-  const isEditModeRef = useRef(isEditMode);
+  const settingsOpenRef = useRef(false);
   const sfxVolumeRef = useRef(sfxVolume);
 
-  useEffect(() => { isEditModeRef.current = isEditMode; }, [isEditMode]);
+  useEffect(() => { settingsOpenRef.current = !!settingsCode; }, [settingsCode]);
 
   const showToast = useCallback((msg, type = 'error') => {
     setToast({ msg, type });
@@ -437,18 +441,32 @@ const SoundBoard = () => {
     if (isCueMode) {
       closeCuePopupWindow();
     } else {
-      setIsEditMode(false);
       setView('board');
       openCuePopupWindow();
     }
   }, [isCueMode, closeCuePopupWindow, openCuePopupWindow]);
 
-  // 자판 설정은 자판 화면 전용: 라이브러리에서 눌러도 자판 화면으로 전환해 편집을 연다
-  // (예전에는 편집 상태만 바뀌고 화면은 라이브러리에 남아 "꼬인" 것처럼 보였다)
-  const handleToggleEditMode = useCallback(() => {
-    if (!isEditMode) setView('board');
-    setIsEditMode(!isEditMode);
-  }, [isEditMode]);
+  // 공연 잠금: 설정 배지·빈 키 설정을 숨겨 오터치를 막는다 (기기별 UI 설정으로 저장)
+  const toggleLocked = useCallback(() => {
+    setLocked(prev => {
+      const next = !prev;
+      try { localStorage.setItem('soundboard_ui_lock', next ? '1' : '0'); } catch { /* ignore */ }
+      return next;
+    });
+  }, []);
+
+  // 키 설정 모달에서 옆 키로 이동 (효과음은 자판 배열 순, BGM은 키패드 배열 순, 양끝은 순환)
+  const navigateSettings = useCallback((dir) => {
+    setSettingsCode(prev => {
+      if (!prev) return prev;
+      const list = String(prev).startsWith('Numpad')
+        ? ['Numpad7', 'Numpad8', 'Numpad9', 'Numpad4', 'Numpad5', 'Numpad6', 'Numpad1', 'Numpad2', 'Numpad3']
+        : SFX_CODES;
+      const idx = list.indexOf(prev);
+      if (idx < 0) return prev;
+      return list[(idx + dir + list.length) % list.length];
+    });
+  }, []);
 
   useEffect(() => {
     return () => {
@@ -676,18 +694,19 @@ const SoundBoard = () => {
 
     const handleKeyDown = (e) => {
       if (isTypingTarget(document)) return;
+      if (settingsOpenRef.current) return;
       if (e.code === 'Escape') { e.preventDefault(); handlePanicStop(); return; }
-      if (isCueModeRef.current && e.code === 'Space' && !isEditModeRef.current) {
+      if (isCueModeRef.current && e.code === 'Space') {
         e.preventDefault();
         triggerNextCue();
         return;
       }
-      if (e.code === 'KeyD' && !isEditModeRef.current) { e.preventDefault(); toggleDuck(); return; }
-      if (e.repeat || isEditModeRef.current) return;
+      if (e.code === 'KeyD') { e.preventDefault(); toggleDuck(); return; }
+      if (e.repeat) return;
       handleSoundAction(e.code, true);
     };
     const handleKeyUp = (e) => {
-      if (isTypingTarget(document) || isEditModeRef.current) return;
+      if (isTypingTarget(document) || settingsOpenRef.current) return;
       handleSoundAction(e.code, false);
     };
     window.addEventListener('keydown', handleKeyDown);
@@ -1244,6 +1263,18 @@ const SoundBoard = () => {
         onCancel={() => setShowVolumeResetConfirm(false)}
       />
 
+      {settingsCode && !pendingDeleteCode && getSound(settingsCode) && (
+        <KeySettingsModal
+          key={settingsCode}
+          sound={getSound(settingsCode)}
+          onClose={() => setSettingsCode(null)}
+          onNavigate={navigateSettings}
+          onSettingChange={handleSettingChange}
+          onFileUpload={handleFileUpload}
+          onDelete={requestDeleteSound}
+        />
+      )}
+
       <header className="flex-shrink-0 p-3 sm:p-5 border-b border-black/40 bg-[#171a1f] z-30 shadow-md">
         <div className="max-w-6xl mx-auto flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
           <div>
@@ -1253,14 +1284,14 @@ const SoundBoard = () => {
           </div>
           <div className="flex flex-wrap items-center gap-2 w-full md:w-auto">
             <button
-              onClick={() => { setIsEditMode(false); setView('board'); }}
+              onClick={() => setView('board')}
               aria-pressed={view === 'board'}
               className={`px-4 py-2.5 rounded-lg font-bold text-sm transition-all border-b-4 active:border-b-0 active:translate-y-1 ${view === 'board' ? 'bg-emerald-500 border-emerald-700 text-white' : 'bg-slate-700 border-slate-900 text-slate-200'}`}
             >
               ⌨️ 자판
             </button>
             <button
-              onClick={() => { setIsEditMode(false); setView('library'); }}
+              onClick={() => setView('library')}
               aria-pressed={view === 'library'}
               className={`px-4 py-2.5 rounded-lg font-bold text-sm transition-all border-b-4 active:border-b-0 active:translate-y-1 ${view === 'library' ? 'bg-emerald-500 border-emerald-700 text-white' : 'bg-slate-700 border-slate-900 text-slate-200'}`}
             >
@@ -1284,13 +1315,14 @@ const SoundBoard = () => {
               🛑 전체 정지
             </button>
             <button
-              onClick={handleToggleEditMode}
-              aria-pressed={isEditMode}
+              onClick={toggleLocked}
+              aria-pressed={locked}
+              title={locked ? '잠금을 풀면 키 설정 버튼이 다시 보입니다' : '공연 중 키 설정 버튼을 숨깁니다'}
               className={`px-5 py-2.5 rounded-lg font-bold text-sm transition-all flex items-center gap-2 border-b-4 active:border-b-0 active:translate-y-1 ${
-                isEditMode ? 'bg-emerald-500 border-emerald-700 text-white shadow-[0_0_15px_rgba(16,185,129,0.4)]' : 'bg-slate-700 border-slate-900 text-slate-200'
+                locked ? 'bg-rose-600 border-rose-800 text-white shadow-[0_0_15px_rgba(244,63,94,0.4)]' : 'bg-slate-700 border-slate-900 text-slate-200'
               }`}
             >
-              {isEditMode ? '✔ 편집 완료' : '⚙️ 자판 설정'}
+              {locked ? '🔒 잠금 중' : '🔓 잠금'}
             </button>
           </div>
         </div>
@@ -1298,7 +1330,7 @@ const SoundBoard = () => {
 
       <main className="flex-grow p-3 lg:p-6 overflow-y-auto overflow-x-auto z-10 custom-scrollbar flex flex-col items-center justify-start">
 
-        {isCueMode && !isEditMode && (
+        {isCueMode && (
           <CueGoBar
             cueList={cueList}
             cueIndex={cueIndex}
@@ -1342,17 +1374,13 @@ const SoundBoard = () => {
                 효과음 자판 <span className="text-[10px] font-normal text-emerald-400 bg-emerald-400/10 px-2 py-0.5 rounded">다중 재생</span>
               </h2>
               <div className="flex items-center gap-3 flex-wrap justify-end">
-                {isEditMode && (
-                  <>
-                    <BackupButtons
-                      onExport={handleExportSettings}
-                      onExportSettingsOnly={handleExportSettingsOnly}
-                      onImportSelected={handleImportFileSelected}
-                      importInputRef={importInputRef}
-                    />
-                    <div className="w-px h-5 bg-slate-600/60" aria-hidden="true" />
-                  </>
-                )}
+                <BackupButtons
+                  onExport={handleExportSettings}
+                  onExportSettingsOnly={handleExportSettingsOnly}
+                  onImportSelected={handleImportFileSelected}
+                  importInputRef={importInputRef}
+                />
+                <div className="w-px h-5 bg-slate-600/60" aria-hidden="true" />
               <div className="flex items-center gap-1.5" role="group" aria-label="효과음 뱅크 전환">
                 <span className="text-[11px] font-bold text-slate-500">뱅크</span>
                 {['A', 'B'].map(b => (
@@ -1371,17 +1399,17 @@ const SoundBoard = () => {
             <div className="flex flex-col gap-3 sm:gap-4 bg-[#222731] p-4 sm:p-6 rounded-xl shadow-inner border border-black/20">
               <div className="flex gap-3 sm:gap-4 ml-0">
                 {['KeyQ', 'KeyW', 'KeyE', 'KeyR', 'KeyT'].map(code => (
-                  <KeycapButton key={code} sound={getSound(code)} isActive={activeKeys.has(code)} isEditMode={isEditMode} bgmUIState={sfxPlayingCodes.has(code) ? 'playing' : null} isCueTarget={isCueMode && !isEditMode && nextCueCode === code} onAction={handleSoundAction} onFileUpload={handleFileUpload} onSettingChange={handleSettingChange} onDelete={requestDeleteSound} />
+                  <KeycapButton key={code} sound={getSound(code)} isActive={activeKeys.has(code)} bgmUIState={sfxPlayingCodes.has(code) ? 'playing' : null} isCueTarget={isCueMode && nextCueCode === code} onAction={handleSoundAction} locked={locked} onOpenSettings={setSettingsCode} />
                 ))}
               </div>
               <div className="flex gap-3 sm:gap-4 ml-4 sm:ml-6">
                 {['KeyA', 'KeyS', 'KeyD', 'KeyF', 'KeyG'].map(code => (
-                  <KeycapButton key={code} sound={getSound(code)} isActive={activeKeys.has(code)} isEditMode={isEditMode} bgmUIState={sfxPlayingCodes.has(code) ? 'playing' : null} isCueTarget={isCueMode && !isEditMode && nextCueCode === code} onAction={handleSoundAction} onFileUpload={handleFileUpload} onSettingChange={handleSettingChange} onDelete={requestDeleteSound} />
+                  <KeycapButton key={code} sound={getSound(code)} isActive={activeKeys.has(code)} bgmUIState={sfxPlayingCodes.has(code) ? 'playing' : null} isCueTarget={isCueMode && nextCueCode === code} onAction={handleSoundAction} locked={locked} onOpenSettings={setSettingsCode} />
                 ))}
               </div>
               <div className="flex gap-3 sm:gap-4 ml-8 sm:ml-12">
                 {['KeyZ', 'KeyX', 'KeyC', 'KeyV', 'KeyB'].map(code => (
-                  <KeycapButton key={code} sound={getSound(code)} isActive={activeKeys.has(code)} isEditMode={isEditMode} bgmUIState={sfxPlayingCodes.has(code) ? 'playing' : null} isCueTarget={isCueMode && !isEditMode && nextCueCode === code} onAction={handleSoundAction} onFileUpload={handleFileUpload} onSettingChange={handleSettingChange} onDelete={requestDeleteSound} />
+                  <KeycapButton key={code} sound={getSound(code)} isActive={activeKeys.has(code)} bgmUIState={sfxPlayingCodes.has(code) ? 'playing' : null} isCueTarget={isCueMode && nextCueCode === code} onAction={handleSoundAction} locked={locked} onOpenSettings={setSettingsCode} />
                 ))}
               </div>
             </div>
@@ -1393,14 +1421,14 @@ const SoundBoard = () => {
             </h2>
             <div className="grid grid-cols-3 gap-3 sm:gap-4 bg-[#222731] p-4 sm:p-6 rounded-xl shadow-inner border border-black/20 w-fit">
               {['Numpad7', 'Numpad8', 'Numpad9', 'Numpad4', 'Numpad5', 'Numpad6', 'Numpad1', 'Numpad2', 'Numpad3'].map(code => (
-                <KeycapButton key={code} sound={getSound(code)} isActive={activeKeys.has(code)} isEditMode={isEditMode} bgmUIState={bgmUIStates[code]} isCueTarget={isCueMode && !isEditMode && nextCueCode === code} onAction={handleSoundAction} onFileUpload={handleFileUpload} onSettingChange={handleSettingChange} onDelete={requestDeleteSound} />
+                <KeycapButton key={code} sound={getSound(code)} isActive={activeKeys.has(code)} bgmUIState={bgmUIStates[code]} isCueTarget={isCueMode && nextCueCode === code} onAction={handleSoundAction} locked={locked} onOpenSettings={setSettingsCode} />
               ))}
             </div>
           </div>
 
         </div>
 
-        {view === 'board' && !isEditMode && (
+        {view === 'board' && (
           <MixerPanel
             sfxChannels={mixerSfxChannels}
             bgmChannels={mixerBgmChannels}

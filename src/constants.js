@@ -40,7 +40,7 @@ export const SFX_CODES = [
 ];
 export const SFX_BANKS = ['A', 'B'];
 
-// 키별 색상 팔레트 (편집 모드에서 선택). cls는 키 배경에 그대로 쓰이는 Tailwind 클래스.
+// 키별 색상 팔레트 (키 설정 모달에서 선택). cls는 키 배경에 그대로 쓰이는 Tailwind 클래스.
 export const KEY_COLORS = [
   { cls: 'bg-green-500', label: '초록' },
   { cls: 'bg-red-500', label: '빨강' },
