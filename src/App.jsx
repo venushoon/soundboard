@@ -437,6 +437,7 @@ const SoundBoard = () => {
     if (isCueMode) {
       closeCuePopupWindow();
     } else {
+      setIsEditMode(false);
       setView('board');
       openCuePopupWindow();
     }
@@ -1252,7 +1253,7 @@ const SoundBoard = () => {
           </div>
           <div className="flex flex-wrap items-center gap-2 w-full md:w-auto">
             <button
-              onClick={() => setView('board')}
+              onClick={() => { setIsEditMode(false); setView('board'); }}
               aria-pressed={view === 'board'}
               className={`px-4 py-2.5 rounded-lg font-bold text-sm transition-all border-b-4 active:border-b-0 active:translate-y-1 ${view === 'board' ? 'bg-emerald-500 border-emerald-700 text-white' : 'bg-slate-700 border-slate-900 text-slate-200'}`}
             >
@@ -1289,7 +1290,7 @@ const SoundBoard = () => {
                 isEditMode ? 'bg-emerald-500 border-emerald-700 text-white shadow-[0_0_15px_rgba(16,185,129,0.4)]' : 'bg-slate-700 border-slate-900 text-slate-200'
               }`}
             >
-              {isEditMode ? '💾 편집 완료' : '⚙️ 자판 설정'}
+              {isEditMode ? '✔ 편집 완료' : '⚙️ 자판 설정'}
             </button>
           </div>
         </div>
