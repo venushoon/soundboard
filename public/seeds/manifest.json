@@ -1,0 +1,113 @@
+{
+ "categories": [
+  "효과음",
+  "배경음악",
+  "큐 음원"
+ ],
+ "sounds": [
+  {
+   "boardCode": "KeyQ",
+   "category": "효과음",
+   "file": "dingdong.mp3",
+   "name": "정답 딩동댕",
+   "type": "sfx",
+   "boardLabel": "정답 딩동댕"
+  },
+  {
+   "boardCode": "KeyW",
+   "category": "효과음",
+   "file": "wrong.mp3",
+   "name": "오답 땡",
+   "type": "sfx",
+   "boardLabel": "오답 땡"
+  },
+  {
+   "boardCode": "KeyE",
+   "category": "효과음",
+   "file": "applause.mp3",
+   "name": "박수",
+   "type": "sfx",
+   "boardLabel": "박수"
+  },
+  {
+   "boardCode": "KeyR",
+   "category": "효과음",
+   "file": "cheer.mp3",
+   "name": "환호성",
+   "type": "sfx",
+   "boardLabel": "환호성"
+  },
+  {
+   "boardCode": "KeyA",
+   "category": "효과음",
+   "file": "drumroll.mp3",
+   "name": "두구두구 드럼롤",
+   "type": "sfx",
+   "boardLabel": "두구두구 드럼롤"
+  },
+  {
+   "boardCode": "KeyD",
+   "category": "효과음",
+   "file": "impact.mp3",
+   "name": "등장 효과음",
+   "type": "sfx",
+   "boardLabel": "등장 효과음"
+  },
+  {
+   "boardCode": "KeyF",
+   "category": "효과음",
+   "file": "fanfare.mp3",
+   "name": "빠밤 팡파레",
+   "type": "sfx",
+   "boardLabel": "빠밤 팡파레"
+  },
+  {
+   "boardCode": "KeyZ",
+   "category": "효과음",
+   "file": "chime.mp3",
+   "name": "띠로링",
+   "type": "sfx",
+   "boardLabel": "띠로링"
+  },
+  {
+   "boardCode": "KeyX",
+   "category": "효과음",
+   "file": "pop.mp3",
+   "name": "뿅 (점프)",
+   "type": "sfx",
+   "boardLabel": "뿅 (점프)"
+  },
+  {
+   "boardCode": "KeyC",
+   "category": "효과음",
+   "file": "tada.mp3",
+   "name": "빰빠밤",
+   "type": "sfx",
+   "boardLabel": "빰빠밤"
+  },
+  {
+   "boardCode": "KeyV",
+   "category": "효과음",
+   "file": "whoosh.mp3",
+   "name": "휘리릭",
+   "type": "sfx",
+   "boardLabel": "휘리릭"
+  },
+  {
+   "boardCode": "Numpad7",
+   "boardLabel": "바람 소리",
+   "category": "배경음악",
+   "file": "wind.mp3",
+   "name": "바람 소리",
+   "type": "bgm"
+  },
+  {
+   "boardCode": "Numpad9",
+   "boardLabel": "심장박동",
+   "category": "배경음악",
+   "file": "heartbeat.mp3",
+   "name": "심장박동",
+   "type": "bgm"
+  }
+ ]
+}
