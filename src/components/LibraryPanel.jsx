@@ -99,7 +99,7 @@ function SoundPlayRow({ sound, onRefresh, showToast }) {
 // 미리듣기는 자판 재생과 같은 보정 게인을 적용한 WebAudio 재생, 실제 연주용 배치는 자판 탭에서 한다.
 export default function LibraryPanel({
   categories, sounds, mappings, onRefresh, showToast,
-  onAssignToKey, onUnassignSound,
+  onAssignToKey, onUnassignSound, readOnly = false,
 }) {
   const [activeCat, setActiveCat] = useState('all');
   const [query, setQuery] = useState('');
@@ -281,6 +281,12 @@ export default function LibraryPanel({
 
   return (
     <div className="w-full max-w-6xl mx-auto flex flex-col gap-4">
+      {readOnly && (
+        <div className="rounded-xl border border-rose-500/40 bg-rose-900/30 px-4 py-3 text-sm text-rose-100">
+          🎭 공연 모드에서는 라이브러리를 수정할 수 없습니다. 수정하려면 상단에서 설정 모드로 전환하세요.
+        </div>
+      )}
+      <fieldset disabled={readOnly} className={`flex flex-col gap-4 border-0 p-0 m-0 min-w-0 ${readOnly ? 'opacity-70' : ''}`}>
       <div className="flex flex-wrap items-center gap-2 bg-[#2a303c] border border-slate-600/30 rounded-xl p-3">
         <input
           value={query} onChange={(e) => setQuery(e.target.value)} placeholder="🔍 사운드 검색"
@@ -399,6 +405,7 @@ export default function LibraryPanel({
           );
         })}
       </div>
+      </fieldset>
       <ConfirmDialog
         open={Boolean(pendingDeleteSound)}
         title="사운드 삭제"

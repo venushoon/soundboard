@@ -64,9 +64,16 @@ const SoundBoard = () => {
 
   const [activeKeys, setActiveKeys] = useState(new Set());
   const [settingsCode, setSettingsCode] = useState(null);
-  const [locked, setLocked] = useState(() => {
-    try { return localStorage.getItem('soundboard_ui_lock') === '1'; } catch { return false; }
+  // QLab식 모드 전환: 'edit'(설정) / 'show'(공연). 공연 모드에서는 설정 표면을 전부 잠근다.
+  const [uiMode, setUiMode] = useState(() => {
+    try {
+      const saved = localStorage.getItem('soundboard_ui_mode');
+      if (saved === 'show' || saved === 'edit') return saved;
+      // 이전 '잠금' 설정을 공연 모드로 승계
+      return localStorage.getItem('soundboard_ui_lock') === '1' ? 'show' : 'edit';
+    } catch { return 'edit'; }
   });
+  const showMode = uiMode === 'show';
   const [toast, setToast] = useState(null);
   const [, forceTick] = useState(0);
   const [pendingDeleteCode, setPendingDeleteCode] = useState(null);
@@ -446,13 +453,10 @@ const SoundBoard = () => {
     }
   }, [isCueMode, closeCuePopupWindow, openCuePopupWindow]);
 
-  // 공연 잠금: 설정 배지·빈 키 설정을 숨겨 오터치를 막는다 (기기별 UI 설정으로 저장)
-  const toggleLocked = useCallback(() => {
-    setLocked(prev => {
-      const next = !prev;
-      try { localStorage.setItem('soundboard_ui_lock', next ? '1' : '0'); } catch { /* ignore */ }
-      return next;
-    });
+  // 모드 전환 (기기별 UI 설정으로 저장)
+  const changeUiMode = useCallback((mode) => {
+    setUiMode(mode);
+    try { localStorage.setItem('soundboard_ui_mode', mode); } catch { /* ignore */ }
   }, []);
 
   // 키 설정 모달에서 옆 키로 이동 (효과음은 자판 배열 순, BGM은 키패드 배열 순, 양끝은 순환)
@@ -1314,16 +1318,28 @@ const SoundBoard = () => {
             >
               🛑 전체 정지
             </button>
-            <button
-              onClick={toggleLocked}
-              aria-pressed={locked}
-              title={locked ? '잠금을 풀면 키 설정 버튼이 다시 보입니다' : '공연 중 키 설정 버튼을 숨깁니다'}
-              className={`px-5 py-2.5 rounded-lg font-bold text-sm transition-all flex items-center gap-2 border-b-4 active:border-b-0 active:translate-y-1 ${
-                locked ? 'bg-rose-600 border-rose-800 text-white shadow-[0_0_15px_rgba(244,63,94,0.4)]' : 'bg-slate-700 border-slate-900 text-slate-200'
-              }`}
-            >
-              {locked ? '🔒 잠금 중' : '🔓 잠금'}
-            </button>
+            <div className="flex overflow-hidden rounded-lg border-b-4 border-slate-900" role="group" aria-label="모드 전환">
+              <button
+                onClick={() => changeUiMode('edit')}
+                aria-pressed={!showMode}
+                title="키 설정·라이브러리 수정이 가능합니다"
+                className={`px-4 py-2.5 font-bold text-sm transition-all ${
+                  !showMode ? 'bg-emerald-500 text-white shadow-[0_0_15px_rgba(16,185,129,0.4)]' : 'bg-slate-700 text-slate-300 hover:bg-slate-600'
+                }`}
+              >
+                🛠 설정 모드
+              </button>
+              <button
+                onClick={() => changeUiMode('show')}
+                aria-pressed={showMode}
+                title="공연 중 실수로 설정이 바뀌지 않게 잠급니다"
+                className={`px-4 py-2.5 font-bold text-sm transition-all ${
+                  showMode ? 'bg-rose-600 text-white shadow-[0_0_15px_rgba(244,63,94,0.4)]' : 'bg-slate-700 text-slate-300 hover:bg-slate-600'
+                }`}
+              >
+                🎭 공연 모드
+              </button>
+            </div>
           </div>
         </div>
       </header>
@@ -1363,6 +1379,7 @@ const SoundBoard = () => {
             showToast={showToast}
             onAssignToKey={handleAssignToKey}
             onUnassignSound={handleUnassignSound}
+            readOnly={showMode}
           />
         )}
 
@@ -1374,13 +1391,17 @@ const SoundBoard = () => {
                 효과음 자판 <span className="text-[10px] font-normal text-emerald-400 bg-emerald-400/10 px-2 py-0.5 rounded">다중 재생</span>
               </h2>
               <div className="flex items-center gap-3 flex-wrap justify-end">
-                <BackupButtons
-                  onExport={handleExportSettings}
-                  onExportSettingsOnly={handleExportSettingsOnly}
-                  onImportSelected={handleImportFileSelected}
-                  importInputRef={importInputRef}
-                />
-                <div className="w-px h-5 bg-slate-600/60" aria-hidden="true" />
+                {!showMode && (
+                  <>
+                    <BackupButtons
+                      onExport={handleExportSettings}
+                      onExportSettingsOnly={handleExportSettingsOnly}
+                      onImportSelected={handleImportFileSelected}
+                      importInputRef={importInputRef}
+                    />
+                    <div className="w-px h-5 bg-slate-600/60" aria-hidden="true" />
+                  </>
+                )}
               <div className="flex items-center gap-1.5" role="group" aria-label="효과음 뱅크 전환">
                 <span className="text-[11px] font-bold text-slate-500">뱅크</span>
                 {['A', 'B'].map(b => (
@@ -1399,17 +1420,17 @@ const SoundBoard = () => {
             <div className="flex flex-col gap-3 sm:gap-4 bg-[#222731] p-4 sm:p-6 rounded-xl shadow-inner border border-black/20">
               <div className="flex gap-3 sm:gap-4 ml-0">
                 {['KeyQ', 'KeyW', 'KeyE', 'KeyR', 'KeyT'].map(code => (
-                  <KeycapButton key={code} sound={getSound(code)} isActive={activeKeys.has(code)} bgmUIState={sfxPlayingCodes.has(code) ? 'playing' : null} isCueTarget={isCueMode && nextCueCode === code} onAction={handleSoundAction} locked={locked} onOpenSettings={setSettingsCode} />
+                  <KeycapButton key={code} sound={getSound(code)} isActive={activeKeys.has(code)} bgmUIState={sfxPlayingCodes.has(code) ? 'playing' : null} isCueTarget={isCueMode && nextCueCode === code} onAction={handleSoundAction} locked={showMode} onOpenSettings={setSettingsCode} />
                 ))}
               </div>
               <div className="flex gap-3 sm:gap-4 ml-4 sm:ml-6">
                 {['KeyA', 'KeyS', 'KeyD', 'KeyF', 'KeyG'].map(code => (
-                  <KeycapButton key={code} sound={getSound(code)} isActive={activeKeys.has(code)} bgmUIState={sfxPlayingCodes.has(code) ? 'playing' : null} isCueTarget={isCueMode && nextCueCode === code} onAction={handleSoundAction} locked={locked} onOpenSettings={setSettingsCode} />
+                  <KeycapButton key={code} sound={getSound(code)} isActive={activeKeys.has(code)} bgmUIState={sfxPlayingCodes.has(code) ? 'playing' : null} isCueTarget={isCueMode && nextCueCode === code} onAction={handleSoundAction} locked={showMode} onOpenSettings={setSettingsCode} />
                 ))}
               </div>
               <div className="flex gap-3 sm:gap-4 ml-8 sm:ml-12">
                 {['KeyZ', 'KeyX', 'KeyC', 'KeyV', 'KeyB'].map(code => (
-                  <KeycapButton key={code} sound={getSound(code)} isActive={activeKeys.has(code)} bgmUIState={sfxPlayingCodes.has(code) ? 'playing' : null} isCueTarget={isCueMode && nextCueCode === code} onAction={handleSoundAction} locked={locked} onOpenSettings={setSettingsCode} />
+                  <KeycapButton key={code} sound={getSound(code)} isActive={activeKeys.has(code)} bgmUIState={sfxPlayingCodes.has(code) ? 'playing' : null} isCueTarget={isCueMode && nextCueCode === code} onAction={handleSoundAction} locked={showMode} onOpenSettings={setSettingsCode} />
                 ))}
               </div>
             </div>
@@ -1421,7 +1442,7 @@ const SoundBoard = () => {
             </h2>
             <div className="grid grid-cols-3 gap-3 sm:gap-4 bg-[#222731] p-4 sm:p-6 rounded-xl shadow-inner border border-black/20 w-fit">
               {['Numpad7', 'Numpad8', 'Numpad9', 'Numpad4', 'Numpad5', 'Numpad6', 'Numpad1', 'Numpad2', 'Numpad3'].map(code => (
-                <KeycapButton key={code} sound={getSound(code)} isActive={activeKeys.has(code)} bgmUIState={bgmUIStates[code]} isCueTarget={isCueMode && nextCueCode === code} onAction={handleSoundAction} locked={locked} onOpenSettings={setSettingsCode} />
+                <KeycapButton key={code} sound={getSound(code)} isActive={activeKeys.has(code)} bgmUIState={bgmUIStates[code]} isCueTarget={isCueMode && nextCueCode === code} onAction={handleSoundAction} locked={showMode} onOpenSettings={setSettingsCode} />
               ))}
             </div>
           </div>
