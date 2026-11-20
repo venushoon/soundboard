@@ -34,6 +34,29 @@ const playMetaOf = (sound) => sound ? {
 } : { soundGainDb: 0, fadeInSec: 0, fadeOutSec: 0, startSec: 0, endSec: null };
 const EMPTY_PLAY_META = playMetaOf(null);
 
+// 공연 모드 앰비언트 라이트 (자동차 앰비언트처럼 자판 패널 외곽에 은은하게 번지는 빛).
+// 설정창이 따로 없어 헤더 팝오버에서 색·밝기를 고르고 localStorage에 기억한다.
+const AMBIENT_COLORS = [
+  { key: 'emerald', label: '에메랄드', rgb: [16, 185, 129] },
+  { key: 'mint', label: '민트', rgb: [45, 212, 191] },
+  { key: 'blue', label: '블루', rgb: [59, 130, 246] },
+  { key: 'violet', label: '바이올렛', rgb: [139, 92, 246] },
+  { key: 'amber', label: '앰버', rgb: [245, 158, 11] },
+  { key: 'rose', label: '로즈', rgb: [244, 63, 94] },
+];
+const ambientRgbOf = (key) => (AMBIENT_COLORS.find(c => c.key === key) || AMBIENT_COLORS[0]).rgb;
+const ambientShadowOf = ({ color, level }) => {
+  const [r, g, b] = ambientRgbOf(color);
+  const a = (v) => Math.min(v * level, 0.85).toFixed(3);
+  return [
+    `inset 0 0 0 1px rgba(${r},${g},${b},${a(0.38)})`,
+    `inset 0 0 18px rgba(${r},${g},${b},${a(0.34)})`,
+    `inset 0 0 46px rgba(${r},${g},${b},${a(0.15)})`,
+    `0 0 22px rgba(${r},${g},${b},${a(0.20)})`,
+    '0 15px 25px rgba(0,0,0,0.5)',
+  ].join(', ');
+};
+
 const SoundBoard = () => {
   const [mappings, setMappings] = useState(() => {
     const saved = localStorage.getItem(STORAGE_KEY);
@@ -74,6 +97,23 @@ const SoundBoard = () => {
     } catch { return 'edit'; }
   });
   const showMode = uiMode === 'show';
+  const [ambient, setAmbient] = useState(() => {
+    try {
+      const s = JSON.parse(localStorage.getItem('soundboard_ambient') || 'null');
+      if (s && AMBIENT_COLORS.some(c => c.key === s.color) && Number.isFinite(s.level)) {
+        return { color: s.color, level: Math.min(Math.max(s.level, 0.2), 1.5), on: s.on !== false };
+      }
+    } catch { /* ignore */ }
+    return { color: 'emerald', level: 1, on: true };
+  });
+  const [ambientOpen, setAmbientOpen] = useState(false);
+  const updateAmbient = (patch) => {
+    setAmbient(prev => {
+      const next = { ...prev, ...patch };
+      try { localStorage.setItem('soundboard_ambient', JSON.stringify(next)); } catch { /* ignore */ }
+      return next;
+    });
+  };
   const [toast, setToast] = useState(null);
   const [, forceTick] = useState(0);
   const [pendingDeleteCode, setPendingDeleteCode] = useState(null);
@@ -1369,6 +1409,62 @@ const SoundBoard = () => {
                 🎭 공연 모드
               </button>
             </div>
+            <div className="relative">
+              <button
+                onClick={() => setAmbientOpen(o => !o)}
+                aria-expanded={ambientOpen}
+                title="공연 모드에서 자판 패널 외곽에 켜지는 앰비언트 라이트의 색·밝기"
+                className="px-3 py-2.5 rounded-lg font-bold text-sm bg-slate-700 border-b-4 border-slate-900 text-slate-200 hover:bg-slate-600 active:border-b-0 active:translate-y-0.5 transition-all"
+              >
+                💡 앰비언트
+              </button>
+              {ambientOpen && (
+                <>
+                  <div className="fixed inset-0 z-30" onClick={() => setAmbientOpen(false)} />
+                  <div className="absolute right-0 top-full mt-2 z-40 w-64 bg-[#232833] border border-slate-600/50 rounded-xl shadow-2xl p-3.5 flex flex-col gap-3 text-left">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-bold text-slate-200">앰비언트 라이트 · 공연 모드</span>
+                      <button
+                        onClick={() => updateAmbient({ on: !ambient.on })}
+                        aria-pressed={ambient.on}
+                        className={`px-2.5 py-1 rounded-md text-[11px] font-bold transition-colors ${ambient.on ? 'bg-emerald-500 text-white' : 'bg-slate-600 text-slate-300'}`}
+                      >
+                        {ambient.on ? '켜짐' : '꺼짐'}
+                      </button>
+                    </div>
+                    <div>
+                      <div className="text-[11px] text-slate-400 mb-1.5">색</div>
+                      <div className="flex gap-2">
+                        {AMBIENT_COLORS.map(c => (
+                          <button
+                            key={c.key}
+                            onClick={() => updateAmbient({ color: c.key, on: true })}
+                            aria-label={`${c.label} 색`}
+                            aria-pressed={ambient.color === c.key}
+                            className={`w-7 h-7 rounded-full transition-transform ${ambient.color === c.key ? 'ring-2 ring-white scale-110' : 'ring-1 ring-white/25 hover:scale-105'}`}
+                            style={{ backgroundColor: `rgb(${c.rgb.join(',')})` }}
+                          />
+                        ))}
+                      </div>
+                    </div>
+                    <div>
+                      <div className="flex justify-between text-[11px] text-slate-400 mb-1">
+                        <span>밝기</span>
+                        <span>{Math.round(ambient.level * 100)}%</span>
+                      </div>
+                      <input
+                        type="range" min="20" max="150" step="5"
+                        value={Math.round(ambient.level * 100)}
+                        onChange={(e) => updateAmbient({ level: Number(e.target.value) / 100, on: true })}
+                        className="w-full accent-emerald-400"
+                        aria-label="앰비언트 밝기"
+                      />
+                    </div>
+                    <p className="text-[10px] text-slate-500 leading-relaxed">공연 모드에서 자판 패널 외곽에 은은하게 켜집니다. 설정은 이 브라우저에 저장돼요.</p>
+                  </div>
+                </>
+              )}
+            </div>
           </div>
         </div>
       </header>
@@ -1412,7 +1508,10 @@ const SoundBoard = () => {
           />
         )}
 
-        <div className={`bg-[#2a303c] p-4 sm:p-6 lg:p-8 rounded-2xl shadow-[inset_0_4px_10px_rgba(255,255,255,0.05),0_15px_25px_rgba(0,0,0,0.5)] border border-slate-600/30 flex-col xl:flex-row flex-wrap gap-6 xl:gap-10 ${view === 'library' ? 'hidden' : 'flex'}`}>
+        <div
+          className={`bg-[#2a303c] p-4 sm:p-6 lg:p-8 rounded-2xl shadow-[inset_0_4px_10px_rgba(255,255,255,0.05),0_15px_25px_rgba(0,0,0,0.5)] border border-slate-600/30 flex-col xl:flex-row flex-wrap gap-6 xl:gap-10 transition-[box-shadow,border-color] duration-700 ${view === 'library' ? 'hidden' : 'flex'}`}
+          style={showMode && ambient.on ? { boxShadow: ambientShadowOf(ambient), borderColor: `rgba(${ambientRgbOf(ambient.color).join(',')},${Math.min(0.45 * ambient.level, 0.8)})` } : undefined}
+        >
 
           <div>
             <div className="flex items-center justify-between gap-2 mb-4 ml-2 flex-wrap">
