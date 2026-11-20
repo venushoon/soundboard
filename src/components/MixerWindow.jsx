@@ -1,4 +1,4 @@
-import React, { useRef } from 'react';
+import React, { useEffect, useRef } from 'react';
 import { MixerGroups, OutputDeviceSelect } from './MixerPanel.jsx';
 
 // 믹서 전용 팝업 창: 상단 메뉴 바(뱅크 전환·전체 정지·창 닫기) + 채널 스트립.
@@ -10,6 +10,26 @@ export default function MixerWindow({
   // 네이티브 dblclick 이벤트는 팝업(포털) 환경에서 전달이 안 되는 경우가 있어,
   // 일반 클릭(버튼 동작으로 전달이 확인된 경로)의 간격을 재서 더블클릭을 판정한다.
   // 버튼 같은 조작 요소를 클릭한 경우는 제외한다.
+  // 창의 마지막 위치·크기를 창 안에서 직접 저장한다 (오프너의 1초 간격 저장 보완).
+  // 오프너 쪽 cleanup 저장은 창이 이미 닫힌 뒤라 closed 가드에 걸려, 닫기 직전 1초
+  // 안의 이동을 놓칠 수 있다 — pagehide 시점에는 지오메트리를 아직 읽을 수 있다.
+  // 전체화면 맞춤 중에는 맞춤 전 크기가 오프너 쪽에 저장돼 있으므로 건너뛴다.
+  useEffect(() => {
+    const save = () => {
+      try {
+        if (document.fullscreenElement) return;
+        const geo = { x: window.screenX, y: window.screenY, w: window.outerWidth, h: window.outerHeight };
+        if (geo.w >= 320 && geo.h >= 240) localStorage.setItem('soundboard_mixer_geometry', JSON.stringify(geo));
+      } catch { /* ignore */ }
+    };
+    window.addEventListener('pagehide', save);
+    window.addEventListener('resize', save);
+    return () => {
+      window.removeEventListener('pagehide', save);
+      window.removeEventListener('resize', save);
+    };
+  }, []);
+
   const lastHeaderClickRef = useRef(0);
   const handleHeaderClick = (e) => {
     if (e.target.closest('button, a, input, select, textarea, [role="button"]')) return;

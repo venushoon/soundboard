@@ -406,6 +406,14 @@ const SoundBoard = () => {
     if (win) {
       setMixerWin(win);
       win.focus();
+      // window.open의 width/height를 안쪽(inner) 크기로 해석하는 브라우저에서는 창이
+      // 테두리만큼 커진 채 열리므로, 저장된 바깥(outer) 크기로 한 번 맞춰 보정한다.
+      // 바깥 크기로 해석하는 브라우저에서는 크기가 같아 아무 일도 일어나지 않는다.
+      setTimeout(() => {
+        try {
+          if (!win.closed && (win.outerWidth !== w || win.outerHeight !== h)) win.resizeTo(w, h);
+        } catch { /* ignore */ }
+      }, 50);
     } else {
       showToast('브라우저 팝업이 차단되었습니다. 주소창에서 팝업 허용 후 다시 눌러주세요.', 'error');
     }
@@ -762,8 +770,14 @@ const SoundBoard = () => {
   }, [enginePanicStop, cancelCueTimers, showToast]);
 
   useEffect(() => {
-    const isTypingTarget = (doc = document) =>
-      ['INPUT', 'SELECT', 'TEXTAREA'].includes(doc.activeElement?.tagName);
+    // 슬라이더(range)는 텍스트 입력이 아니므로 제외한다 — 앰비언트 밝기 슬라이더에
+    // 포커스가 있어도 자판 재생·Esc 전체 정지가 동작해야 한다 (외부 리뷰 5차).
+    const isTypingTarget = (doc = document) => {
+      const el = doc.activeElement;
+      if (!el) return false;
+      if (el.tagName === 'SELECT' || el.tagName === 'TEXTAREA') return true;
+      return el.tagName === 'INPUT' && el.type !== 'range';
+    };
 
     const handleKeyDown = (e) => {
       if (isTypingTarget(document)) return;
@@ -792,9 +806,10 @@ const SoundBoard = () => {
 
   // 독립 큐플레이어 창에서의 키보드 단축키 핸들러
   const handlePopupKeyDown = useCallback((e, popupDoc) => {
-    const activeTag = popupDoc?.activeElement?.tagName;
-    if (['INPUT', 'SELECT', 'TEXTAREA'].includes(activeTag)) {
-      if (e.code === 'Escape') popupDoc.activeElement.blur();
+    const ae = popupDoc?.activeElement;
+    const typing = !!ae && (ae.tagName === 'SELECT' || ae.tagName === 'TEXTAREA' || (ae.tagName === 'INPUT' && ae.type !== 'range'));
+    if (typing) {
+      if (e.code === 'Escape') ae.blur();
       return;
     }
     if (e.code === 'Escape') {
