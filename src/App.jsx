@@ -350,10 +350,19 @@ const SoundBoard = () => {
       mixerWin.focus();
       return;
     }
-    // 크기·위치 옵션을 주면 브라우저가 '팝업형 창'으로 만들어 제목줄 더블클릭 확대 같은
-    // OS 기본 동작이 막힌다. 김님 결정으로 옵션을 빼고 일반 브라우저 창/탭으로 연다 —
-    // 브라우저 설정에 따라 탭으로 열리면 밖으로 끌어내면 일반 창이 된다.
-    const win = window.open('', 'SoundboardMixer');
+    // 크기·위치 옵션을 줘서 탭이 아닌 별도 창(팝업형)으로 연다 (2026-11-20 김님 결정 변경).
+    // 옵션 없이 열면 크롬이 탭으로 열어 버려서 ① 보조 모니터 전용 창 용도와 안 맞고
+    // ② 화면맞춤 복원의 resizeTo/moveTo를 탭이 무시해 맞춤 토글이 깨졌다.
+    // 팝업형 창에서 잃는 OS 제목줄 더블클릭 확대는 앱 상단 바 더블클릭(화면맞춤)이 대신한다.
+    // 마지막 창의 위치·크기는 아래 저장 이펙트가 localStorage에 남겨 두고, 여기서 복원한다.
+    let geo = null;
+    try { geo = JSON.parse(localStorage.getItem('soundboard_mixer_geometry') || 'null'); } catch { geo = null; }
+    const clamp = (v, min, max, dflt) => (Number.isFinite(v) ? Math.min(Math.max(Math.round(v), min), max) : dflt);
+    const w = clamp(geo?.w, 400, 4000, 960);
+    const h = clamp(geo?.h, 300, 3000, 640);
+    const x = clamp(geo?.x, -10000, 10000, 120);
+    const y = clamp(geo?.y, -10000, 10000, 80);
+    const win = window.open('', 'SoundboardMixer', `width=${w},height=${h},left=${x},top=${y},resizable=yes,scrollbars=yes`);
     if (win) {
       setMixerWin(win);
       win.focus();
@@ -396,6 +405,26 @@ const SoundBoard = () => {
     };
     doc.addEventListener('fullscreenchange', onFsChange);
     return () => doc.removeEventListener('fullscreenchange', onFsChange);
+  }, [mixerWin]);
+
+  // 믹서 창의 위치·크기를 주기적으로 저장해 다음에 열 때 같은 자리에 복원한다.
+  // 전체화면 맞춤 중에는 맞춤 전(mixerFitRef) 크기를 저장해 전체화면 크기가 남지 않게 한다.
+  useEffect(() => {
+    if (!mixerWin || mixerWin.closed) return undefined;
+    const save = () => {
+      try {
+        if (mixerWin.closed) return;
+        if (mixerFsRef.current || mixerWin.document.fullscreenElement) {
+          const p = mixerFitRef.current;
+          if (p) localStorage.setItem('soundboard_mixer_geometry', JSON.stringify(p));
+          return;
+        }
+        const geo = { x: mixerWin.screenX, y: mixerWin.screenY, w: mixerWin.outerWidth, h: mixerWin.outerHeight };
+        if (geo.w >= 320 && geo.h >= 240) localStorage.setItem('soundboard_mixer_geometry', JSON.stringify(geo));
+      } catch { /* ignore */ }
+    };
+    const timer = setInterval(save, 1000);
+    return () => { save(); clearInterval(timer); };
   }, [mixerWin]);
 
   const toggleMixerFit = useCallback(() => {
