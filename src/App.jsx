@@ -506,19 +506,35 @@ const SoundBoard = () => {
     setIsMixerFitted(true);
     win.focus();
     const el = doc.documentElement;
-    if (el.requestFullscreen) {
-      el.requestFullscreen()
-        .then(() => { mixerFsRef.current = true; })
-        .catch(() => {
-          // 전체화면이 거부된 환경에서만 크기 조절 방식으로 맞춘다.
-          mixerFsRef.current = false;
-          const s = win.screen;
-          try {
-            win.moveTo(typeof s.availLeft === 'number' ? s.availLeft : 0, typeof s.availTop === 'number' ? s.availTop : 0);
-            win.resizeTo(s.availWidth, s.availHeight);
-          } catch { /* ignore */ }
-        });
-    }
+    if (!el.requestFullscreen) return;
+    // 전체화면이 메인 모니터에 뜨는 문제 방지 (김님 실측 2026-11-20): 대상 모니터를
+    // 지정하지 않으면 크롬이 기본(메인) 화면으로 보낼 수 있어, 믹서 창의 중심점이
+    // 속한 모니터를 getScreenDetails로 찾아 FullscreenOptions.screen으로 명시한다.
+    // 권한 거부·미지원이면 지정 없이 요청하고, 전체화면이 거부되면 같은 모니터의
+    // 작업 영역 수치로 크기 맞춤한다 (기존 폴백은 win.screen = 메인 기준일 수 있었다).
+    (async () => {
+      let target = null;
+      try {
+        if (typeof win.getScreenDetails === 'function') {
+          const details = await win.getScreenDetails();
+          const cx = win.screenX + win.outerWidth / 2;
+          const cy = win.screenY + win.outerHeight / 2;
+          target = details.screens.find(s => cx >= s.availLeft && cx < s.availLeft + s.availWidth && cy >= s.availTop && cy < s.availTop + s.availHeight) || details.currentScreen || null;
+        }
+      } catch { target = null; }
+      if (win.closed) return;
+      try {
+        await el.requestFullscreen(target ? { screen: target } : undefined);
+        mixerFsRef.current = true;
+      } catch {
+        mixerFsRef.current = false;
+        const s = target || win.screen;
+        try {
+          win.moveTo(typeof s.availLeft === 'number' ? s.availLeft : 0, typeof s.availTop === 'number' ? s.availTop : 0);
+          win.resizeTo(s.availWidth, s.availHeight);
+        } catch { /* ignore */ }
+      }
+    })();
   }, [mixerWin]);
 
   const handleToggleCueMode = useCallback(() => {
