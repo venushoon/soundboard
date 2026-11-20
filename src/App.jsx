@@ -472,7 +472,19 @@ const SoundBoard = () => {
       } catch { /* ignore */ }
     };
     const timer = setInterval(save, 1000);
-    return () => { save(); clearInterval(timer); };
+    // 믹서 창 자신의 이벤트에도 같은 저장을 건다: X로 닫으면 pagehide 시점에는
+    // 지오메트리를 아직 읽을 수 있지만, cleanup의 save는 closed 가드에 걸려
+    // 닫기 직전의 이동을 놓친다. 주의 — MixerWindow(createPortal) 안에서 전역
+    // window로 걸면 본창을 가리켜 본창 지오메트리로 덮어써지는 버그가 되므로
+    // 반드시 mixerWin 객체에 직접 걸어야 한다 (외부 리뷰 6차).
+    mixerWin.addEventListener('pagehide', save);
+    mixerWin.addEventListener('resize', save);
+    return () => {
+      mixerWin.removeEventListener('pagehide', save);
+      mixerWin.removeEventListener('resize', save);
+      save();
+      clearInterval(timer);
+    };
   }, [mixerWin]);
 
   const toggleMixerFit = useCallback(() => {
